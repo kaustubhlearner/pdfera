@@ -3,7 +3,7 @@
 import { DragEvent, useRef, useState } from "react";
 import { PDFDocument, degrees } from "pdf-lib";
 
-type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress";
+type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp";
 
 const MAX_MERGE_FILES = 100;
 
@@ -16,6 +16,7 @@ const tools = [
   { id: "delete" as Tool, icon: "⌫", title: "Delete Pages", text: "Remove selected pages from a PDF." },
   { id: "reorder" as Tool, icon: "☷", title: "Reorder Pages", text: "Change page order using page numbers." },
   { id: "compress" as Tool, icon: "↓", title: "Compress PDF", text: "Optimize the PDF structure in your browser." },
+  { id: "stamp" as Tool, icon: "✒", title: "Stamp & Sign", text: "Add a stamp or signature to every page." },
 ];
 
 export default function Home() {
@@ -28,7 +29,12 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [mergeReview, setMergeReview] = useState(false);
+  const [overlayFile, setOverlayFile] = useState<File | null>(null);
+  const [overlayType, setOverlayType] = useState<"stamp" | "signature">("stamp");
+  const [overlayPosition, setOverlayPosition] = useState("bottom-right");
+  const [overlaySize, setOverlaySize] = useState("medium");
   const inputRef = useRef<HTMLInputElement>(null);
+  const overlayInputRef = useRef<HTMLInputElement>(null);
 
   function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);
@@ -351,6 +357,65 @@ export default function Home() {
     }
   }
 
+  async function stampPdf() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF.");
+      return;
+    }
+
+    if (!overlayFile) {
+      setMessage(`Upload your ${overlayType} image first.`);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const pdf = await PDFDocument.load(await files[0].arrayBuffer());
+      const imageBytes = await overlayFile.arrayBuffer();
+      const image = overlayFile.type === "image/png"
+        ? await pdf.embedPng(imageBytes)
+        : await pdf.embedJpg(imageBytes);
+
+      const sizeRatio = overlaySize === "small" ? 0.16 : overlaySize === "large" ? 0.32 : 0.24;
+
+      for (const page of pdf.getPages()) {
+        const pageWidth = page.getWidth();
+        const pageHeight = page.getHeight();
+        const ratio = Math.min(
+          (pageWidth * sizeRatio) / image.width,
+          (pageHeight * sizeRatio) / image.height
+        );
+        const width = image.width * ratio;
+        const height = image.height * ratio;
+        const margin = Math.max(18, Math.min(pageWidth, pageHeight) * 0.04);
+
+        let x = margin;
+        let y = margin;
+
+        if (overlayPosition.includes("right")) x = pageWidth - width - margin;
+        if (overlayPosition.includes("center")) x = (pageWidth - width) / 2;
+        if (overlayPosition.includes("top")) y = pageHeight - height - margin;
+        if (overlayPosition.includes("middle")) y = (pageHeight - height) / 2;
+
+        page.drawImage(image, { x, y, width, height });
+      }
+
+      download(
+        await pdf.save(),
+        overlayType === "stamp" ? "pdfera-stamped.pdf" : "pdfera-signed.pdf"
+      );
+      setMessage(
+        overlayType === "stamp"
+          ? "Stamp added to every page successfully."
+          : "Signature added to every page successfully."
+      );
+    } catch {
+      setMessage("Could not add the stamp or signature.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function compressPdf() {
     if (files.length !== 1) {
       setMessage("Select exactly 1 PDF.");
@@ -382,6 +447,7 @@ export default function Home() {
     else if (tool === "rotate") await rotatePdf();
     else if (tool === "delete") await deletePages();
     else if (tool === "reorder") await reorderPages();
+    else if (tool === "stamp") await stampPdf();
     else await compressPdf();
   }
 
@@ -392,6 +458,10 @@ export default function Home() {
     setPageRange("1");
     setPageOrder("");
     setMergeReview(false);
+    setOverlayFile(null);
+    setOverlayType("stamp");
+    setOverlayPosition("bottom-right");
+    setOverlaySize("medium");
   }
 
   function openMergeReview() {
@@ -577,7 +647,8 @@ export default function Home() {
                  tool === "images" ? "Convert PDF to JPG" :
                  tool === "rotate" ? "Rotate your PDF" :
                  tool === "delete" ? "Delete PDF pages" :
-                 tool === "reorder" ? "Reorder PDF pages" : "Optimize your PDF"}
+                 tool === "reorder" ? "Reorder PDF pages" :
+                 tool === "stamp" ? "Stamp or sign every page" : "Optimize your PDF"}
               </h2>
               <p className="mt-1 text-sm text-white/40">
                 {tool === "merge" ? `Add 2 to ${MAX_MERGE_FILES} PDF files.` :
@@ -587,6 +658,7 @@ export default function Home() {
                  tool === "rotate" ? "Rotate every page by 90 degrees clockwise." :
                  tool === "delete" ? "Choose pages to remove." :
                  tool === "reorder" ? "Enter the complete new page order." :
+                 tool === "stamp" ? "Upload a stamp or signature image and apply it to every page." :
                  "Re-save the PDF with object streams enabled."}
               </p>
             </div>
@@ -652,6 +724,98 @@ export default function Home() {
             </div>
           )}
 
+          {tool === "stamp" && files.length === 1 && (
+            <div className="mt-5 space-y-5 rounded-3xl border border-white/10 bg-black/30 p-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white/70">What do you want to add?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setOverlayType("stamp")}
+                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                      overlayType === "stamp" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"
+                    }`}
+                  >
+                    Stamp
+                  </button>
+                  <button
+                    onClick={() => setOverlayType("signature")}
+                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                      overlayType === "signature" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"
+                    }`}
+                  >
+                    Signature
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white/70">
+                  Upload {overlayType === "stamp" ? "stamp" : "signature"} image
+                </label>
+                <input
+                  ref={overlayInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setOverlayFile(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => overlayInputRef.current?.click()}
+                  className="w-full rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50"
+                >
+                  <span className="block font-semibold">
+                    {overlayFile ? overlayFile.name : `Choose ${overlayType} image`}
+                  </span>
+                  <span className="mt-1 block text-xs text-white/35">PNG recommended for transparent background.</span>
+                </button>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white/70">Position</label>
+                  <select
+                    value={overlayPosition}
+                    onChange={(event) => setOverlayPosition(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
+                  >
+                    <option value="top-left">Top left</option>
+                    <option value="top-center">Top center</option>
+                    <option value="top-right">Top right</option>
+                    <option value="middle-left">Middle left</option>
+                    <option value="center">Center</option>
+                    <option value="middle-right">Middle right</option>
+                    <option value="bottom-left">Bottom left</option>
+                    <option value="bottom-center">Bottom center</option>
+                    <option value="bottom-right">Bottom right</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white/70">Size</label>
+                  <select
+                    value={overlaySize}
+                    onChange={(event) => setOverlaySize(event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
+                  >
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                  </select>
+                </div>
+              </div>
+
+              {overlayFile && (
+                <p className="text-xs text-[#ccff00]">
+                  This {overlayType} will be added to every page.
+                </p>
+              )}
+            </div>
+          )}
+
           {files.length > 0 && tool !== "merge" && (
             <div className="mt-5 space-y-2">
               {files.map((file, index) => (
@@ -675,7 +839,8 @@ export default function Home() {
              tool === "images" ? "Convert to JPG →" :
              tool === "rotate" ? "Rotate PDF →" :
              tool === "delete" ? "Delete Pages →" :
-             tool === "reorder" ? "Reorder PDF →" : "Optimize PDF →"}
+             tool === "reorder" ? "Reorder PDF →" :
+             tool === "stamp" ? `Add ${overlayType === "stamp" ? "Stamp" : "Signature"} →` : "Optimize PDF →"}
           </button>
 
           {message && <p className="mt-4 text-center text-sm text-[#ccff00]">{message}</p>}

@@ -33,6 +33,12 @@ export default function Home() {
   const [overlayType, setOverlayType] = useState<"stamp" | "signature">("stamp");
   const [overlayPosition, setOverlayPosition] = useState("bottom-right");
   const [overlaySize, setOverlaySize] = useState("medium");
+  const [overlayOpacity, setOverlayOpacity] = useState(100);
+  const [overlayRotation, setOverlayRotation] = useState(0);
+  const [overlayPages, setOverlayPages] = useState("all");
+  const [overlayPageRange, setOverlayPageRange] = useState("1");
+  const [stampText, setStampText] = useState("");
+  const [stampColor, setStampColor] = useState("#ccff00");
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayInputRef = useRef<HTMLInputElement>(null);
 
@@ -363,51 +369,108 @@ export default function Home() {
       return;
     }
 
-    if (!overlayFile) {
-      setMessage(`Upload your ${overlayType} image first.`);
+    if (overlayType === "stamp" && !overlayFile && !stampText.trim()) {
+      setMessage("Upload a stamp image or enter stamp text.");
+      return;
+    }
+
+    if (overlayType === "signature" && !overlayFile) {
+      setMessage("Upload your signature image first.");
       return;
     }
 
     setBusy(true);
     try {
       const pdf = await PDFDocument.load(await files[0].arrayBuffer());
-      const imageBytes = await overlayFile.arrayBuffer();
-      const image = overlayFile.type === "image/png"
-        ? await pdf.embedPng(imageBytes)
-        : await pdf.embedJpg(imageBytes);
+      let image = null;
+
+      if (overlayFile) {
+        const imageBytes = await overlayFile.arrayBuffer();
+        image = overlayFile.type === "image/png"
+          ? await pdf.embedPng(imageBytes)
+          : await pdf.embedJpg(imageBytes);
+      }
+
+      const totalPages = pdf.getPageCount();
+      let selectedPages: number[] = [];
+
+      if (overlayPages === "all") {
+        for (let page = 1; page <= totalPages; page++) selectedPages.push(page);
+      } else {
+        selectedPages = parsePageNumbers(overlayPageRange, totalPages);
+        if (selectedPages.length === 0) {
+          setMessage("Enter valid pages, for example 1,3,5 or 1-3.");
+          return;
+        }
+      }
 
       const sizeRatio = overlaySize === "small" ? 0.16 : overlaySize === "large" ? 0.32 : 0.24;
+      const opacity = overlayOpacity / 100;
+      const rotation = degrees(overlayRotation);
 
-      for (const page of pdf.getPages()) {
+      for (const pageNumber of selectedPages) {
+        const page = pdf.getPage(pageNumber - 1);
         const pageWidth = page.getWidth();
         const pageHeight = page.getHeight();
-        const ratio = Math.min(
-          (pageWidth * sizeRatio) / image.width,
-          (pageHeight * sizeRatio) / image.height
-        );
-        const width = image.width * ratio;
-        const height = image.height * ratio;
         const margin = Math.max(18, Math.min(pageWidth, pageHeight) * 0.04);
 
-        let x = margin;
-        let y = margin;
+        if (image) {
+          const ratio = Math.min(
+            (pageWidth * sizeRatio) / image.width,
+            (pageHeight * sizeRatio) / image.height
+          );
+          const width = image.width * ratio;
+          const height = image.height * ratio;
 
-        if (overlayPosition.includes("right")) x = pageWidth - width - margin;
-        if (overlayPosition.includes("center")) x = (pageWidth - width) / 2;
-        if (overlayPosition.includes("top")) y = pageHeight - height - margin;
-        if (overlayPosition.includes("middle")) y = (pageHeight - height) / 2;
+          let x = margin;
+          let y = margin;
 
-        page.drawImage(image, { x, y, width, height });
+          if (overlayPosition.includes("right")) x = pageWidth - width - margin;
+          if (overlayPosition.includes("center")) x = (pageWidth - width) / 2;
+          if (overlayPosition.includes("middle")) y = (pageHeight - height) / 2;
+          if (overlayPosition.includes("top")) y = pageHeight - height - margin;
+
+          page.drawImage(image, {
+            x,
+            y,
+            width,
+            height,
+            opacity,
+            rotate: rotation,
+          });
+        }
+
+        if (overlayType === "stamp" && stampText.trim()) {
+          const fontSize = overlaySize === "small" ? 18 : overlaySize === "large" ? 34 : 26;
+          const textWidth = stampText.trim().length * fontSize * 0.55;
+          let x = margin;
+          let y = margin;
+
+          if (overlayPosition.includes("right")) x = pageWidth - textWidth - margin;
+          if (overlayPosition.includes("center")) x = (pageWidth - textWidth) / 2;
+          if (overlayPosition.includes("middle")) y = (pageHeight - fontSize) / 2;
+          if (overlayPosition.includes("top")) y = pageHeight - fontSize - margin;
+
+          page.drawText(stampText.trim(), {
+            x: Math.max(margin, x),
+            y: Math.max(margin, y),
+            size: fontSize,
+            opacity,
+            rotate: rotation,
+            color: hexToRgb(stampColor),
+          });
+        }
       }
 
       download(
         await pdf.save(),
         overlayType === "stamp" ? "pdfera-stamped.pdf" : "pdfera-signed.pdf"
       );
+
       setMessage(
-        overlayType === "stamp"
-          ? "Stamp added to every page successfully."
-          : "Signature added to every page successfully."
+        overlayPages === "all"
+          ? `${overlayType === "stamp" ? "Stamp" : "Signature"} applied to all ${totalPages} pages.`
+          : `${overlayType === "stamp" ? "Stamp" : "Signature"} applied to ${selectedPages.length} selected page(s).`
       );
     } catch {
       setMessage("Could not add the stamp or signature.");
@@ -462,6 +525,12 @@ export default function Home() {
     setOverlayType("stamp");
     setOverlayPosition("bottom-right");
     setOverlaySize("medium");
+    setOverlayOpacity(100);
+    setOverlayRotation(0);
+    setOverlayPages("all");
+    setOverlayPageRange("1");
+    setStampText("");
+    setStampColor("#ccff00");
   }
 
   function openMergeReview() {
@@ -729,90 +798,80 @@ export default function Home() {
               <div>
                 <label className="mb-2 block text-sm font-semibold text-white/70">What do you want to add?</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setOverlayType("stamp")}
-                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                      overlayType === "stamp" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"
-                    }`}
-                  >
-                    Stamp
-                  </button>
-                  <button
-                    onClick={() => setOverlayType("signature")}
-                    className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
-                      overlayType === "signature" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"
-                    }`}
-                  >
-                    Signature
-                  </button>
+                  <button onClick={() => setOverlayType("stamp")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayType === "stamp" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>Stamp</button>
+                  <button onClick={() => setOverlayType("signature")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayType === "signature" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>Signature</button>
                 </div>
               </div>
 
+              {overlayType === "stamp" && (
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-white/70">Stamp text (optional)</label>
+                  <input
+                    value={stampText}
+                    onChange={(event) => setStampText(event.target.value)}
+                    placeholder="Example: APPROVED, PAID, CONFIDENTIAL"
+                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
+                  />
+                  <div className="mt-3 flex items-center gap-3">
+                    <label className="text-xs text-white/40">Text color</label>
+                    <input type="color" value={stampColor} onChange={(event) => setStampColor(event.target.value)} className="h-9 w-12 cursor-pointer rounded-lg bg-transparent" />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="mb-2 block text-sm font-semibold text-white/70">
-                  Upload {overlayType === "stamp" ? "stamp" : "signature"} image
+                  {overlayType === "stamp" ? "Stamp image (optional)" : "Signature image"}
                 </label>
-                <input
-                  ref={overlayInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    setOverlayFile(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <button
-                  onClick={() => overlayInputRef.current?.click()}
-                  className="w-full rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50"
-                >
-                  <span className="block font-semibold">
-                    {overlayFile ? overlayFile.name : `Choose ${overlayType} image`}
-                  </span>
-                  <span className="mt-1 block text-xs text-white/35">PNG recommended for transparent background.</span>
+                <input ref={overlayInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { setOverlayFile(event.target.files?.[0] || null); event.currentTarget.value = ""; }} />
+                <button onClick={() => overlayInputRef.current?.click()} className="w-full rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50">
+                  <span className="block font-semibold">{overlayFile ? overlayFile.name : `Choose ${overlayType} image`}</span>
+                  <span className="mt-1 block text-xs text-white/35">PNG with transparent background is recommended.</span>
                 </button>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white/70">Apply to pages</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setOverlayPages("all")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayPages === "all" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>All pages</button>
+                  <button onClick={() => setOverlayPages("selected")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayPages === "selected" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>Selected pages</button>
+                </div>
+                {overlayPages === "selected" && (
+                  <input value={overlayPageRange} onChange={(event) => setOverlayPageRange(event.target.value)} placeholder="Example: 1,3,5 or 2-6" className="mt-3 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60" />
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white/70">Position</label>
-                  <select
-                    value={overlayPosition}
-                    onChange={(event) => setOverlayPosition(event.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
-                  >
-                    <option value="top-left">Top left</option>
-                    <option value="top-center">Top center</option>
-                    <option value="top-right">Top right</option>
-                    <option value="middle-left">Middle left</option>
-                    <option value="center">Center</option>
-                    <option value="middle-right">Middle right</option>
-                    <option value="bottom-left">Bottom left</option>
-                    <option value="bottom-center">Bottom center</option>
-                    <option value="bottom-right">Bottom right</option>
+                  <select value={overlayPosition} onChange={(event) => setOverlayPosition(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60">
+                    <option value="top-left">Top left</option><option value="top-center">Top center</option><option value="top-right">Top right</option>
+                    <option value="middle-left">Middle left</option><option value="center">Center</option><option value="middle-right">Middle right</option>
+                    <option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom center</option><option value="bottom-right">Bottom right</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white/70">Size</label>
-                  <select
-                    value={overlaySize}
-                    onChange={(event) => setOverlaySize(event.target.value)}
-                    className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
-                  >
-                    <option value="small">Small</option>
-                    <option value="medium">Medium</option>
-                    <option value="large">Large</option>
+                  <select value={overlaySize} onChange={(event) => setOverlaySize(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60">
+                    <option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option>
                   </select>
                 </div>
               </div>
 
-              {overlayFile && (
-                <p className="text-xs text-[#ccff00]">
-                  This {overlayType} will be added to every page.
-                </p>
-              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <div className="mb-2 flex justify-between text-sm"><label className="font-semibold text-white/70">Opacity</label><span className="text-white/40">{overlayOpacity}%</span></div>
+                  <input type="range" min="10" max="100" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} className="w-full accent-[#ccff00]" />
+                </div>
+                <div>
+                  <div className="mb-2 flex justify-between text-sm"><label className="font-semibold text-white/70">Rotation</label><span className="text-white/40">{overlayRotation}°</span></div>
+                  <input type="range" min="-180" max="180" step="1" value={overlayRotation} onChange={(event) => setOverlayRotation(Number(event.target.value))} className="w-full accent-[#ccff00]" />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#ccff00]/15 bg-[#ccff00]/5 p-4 text-xs text-white/50">
+                <span className="font-semibold text-[#ccff00]">Advanced:</span> You can use an image, text, or both for a stamp. Select specific pages, adjust opacity and rotation, then apply it in one click.
+              </div>
             </div>
           )}
 
@@ -890,4 +949,13 @@ function download(bytes: Uint8Array, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+
+function hexToRgb(hex: string) {
+  const value = hex.replace("#", "");
+  const r = parseInt(value.slice(0, 2), 16) / 255;
+  const g = parseInt(value.slice(2, 4), 16) / 255;
+  const b = parseInt(value.slice(4, 6), 16) / 255;
+  return { r, g, b };
 }

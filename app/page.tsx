@@ -27,6 +27,7 @@ export default function Home() {
   const [pageOrder, setPageOrder] = useState("");
   const [dragging, setDragging] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [mergeReview, setMergeReview] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function addFiles(list: FileList | File[]) {
@@ -390,11 +391,141 @@ export default function Home() {
     setMessage("");
     setPageRange("1");
     setPageOrder("");
+    setMergeReview(false);
+  }
+
+  function openMergeReview() {
+    if (files.length < 2) {
+      setMessage("Select at least 2 PDF files.");
+      return;
+    }
+
+    setMessage("");
+    setMergeReview(true);
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   const needsPdf = tool !== "jpg";
   const accept = needsPdf ? "application/pdf" : "image/jpeg,image/png";
   const multiple = tool === "merge" || tool === "jpg";
+
+  if (tool === "merge" && mergeReview) {
+    return (
+      <main className="min-h-screen">
+        <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+          <div className="text-2xl font-black tracking-tight">
+            PDF<span className="text-[#ccff00]">era</span>
+          </div>
+          <span className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/50">
+            Merge PDF
+          </span>
+        </nav>
+
+        <section className="mx-auto max-w-7xl px-6 pb-24 pt-8">
+          <button
+            onClick={() => setMergeReview(false)}
+            className="mb-8 text-sm text-white/45 transition hover:text-white"
+          >
+            ← Back to upload
+          </button>
+
+          <div className="mb-8">
+            <p className="mb-3 text-sm font-bold uppercase tracking-[0.2em] text-[#ccff00]">Step 2 of 2</p>
+            <h1 className="text-4xl font-black tracking-tight sm:text-5xl">Arrange your PDFs</h1>
+            <p className="mt-3 text-white/45">
+              Drag the files into the order you want. The first file will be first in the merged PDF.
+            </p>
+          </div>
+
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
+            <div>
+              <span className="font-bold">{files.length} PDFs selected</span>
+              <span className="ml-2 text-sm text-white/35">Maximum {MAX_MERGE_FILES}</span>
+            </div>
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold transition hover:border-[#ccff00]/50 hover:text-[#ccff00]"
+            >
+              + Add more PDFs
+            </button>
+          </div>
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              if (event.target.files) addFiles(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {files.map((file, index) => (
+              <div
+                key={file.name + index}
+                draggable
+                onDragStart={() => handleFileDragStart(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => handleFileDrop(index)}
+                onDragEnd={() => setDragIndex(null)}
+                className={`group relative cursor-grab rounded-2xl border bg-[#11151b] p-4 transition hover:-translate-y-1 hover:border-white/25 ${
+                  dragIndex === index
+                    ? "border-[#ccff00] bg-[#ccff00]/10"
+                    : "border-white/10"
+                }`}
+              >
+                <div className="relative flex h-44 items-center justify-center rounded-xl bg-white/[0.035]">
+                  <div className="flex h-20 w-16 flex-col items-center justify-center rounded-lg border border-white/10 bg-[#181d24] shadow-xl">
+                    <span className="text-2xl font-black text-[#ccff00]">PDF</span>
+                    <span className="mt-1 text-[9px] uppercase tracking-widest text-white/30">Document</span>
+                  </div>
+                  <span className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg bg-[#ccff00] text-sm font-black text-black">
+                    {index + 1}
+                  </span>
+                  <button
+                    onClick={() => removeFile(index)}
+                    className="absolute right-3 top-3 rounded-lg bg-black/60 px-2 py-1 text-xs text-white/50 opacity-0 transition group-hover:opacity-100 hover:text-white"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <div className="mt-4 min-w-0">
+                  <p className="truncate font-semibold" title={file.name}>{file.name}</p>
+                  <p className="mt-1 text-xs text-white/35">{formatFileSize(file.size)} • Drag to move</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {message && <p className="mt-5 text-center text-sm text-[#ccff00]">{message}</p>}
+
+          <div className="mt-10 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              onClick={() => setMergeReview(false)}
+              className="rounded-2xl border border-white/10 px-7 py-4 font-semibold text-white/60 transition hover:border-white/20 hover:text-white"
+            >
+              Back
+            </button>
+            <button
+              onClick={mergePdfs}
+              disabled={busy || files.length < 2}
+              className="rounded-2xl bg-[#ccff00] px-8 py-4 font-black text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? "Merging PDFs..." : `Merge ${files.length} PDFs →`}
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen">
@@ -521,79 +652,24 @@ export default function Home() {
             </div>
           )}
 
-          {files.length > 0 && (
-            <div className="mt-5">
-              {tool === "merge" && (
-                <div className="mb-3 rounded-2xl border border-[#ccff00]/20 bg-[#ccff00]/5 px-4 py-3 text-sm text-white/65">
-                  <span className="font-semibold text-[#ccff00]">Customize order:</span> Drag the PDFs up or down. The first PDF will be at the front and the last PDF will be at the end.
+          {files.length > 0 && tool !== "merge" && (
+            <div className="mt-5 space-y-2">
+              {files.map((file, index) => (
+                <div key={file.name + index} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
+                  <span className="truncate text-sm">{index + 1}. {file.name}</span>
+                  <button onClick={() => removeFile(index)} className="ml-4 text-xs text-white/40 hover:text-white">Remove</button>
                 </div>
-              )}
-
-              <div className="space-y-2">
-                {files.map((file, index) => (
-                  <div
-                    key={file.name + index}
-                    draggable={tool === "merge"}
-                    onDragStart={() => handleFileDragStart(index)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => handleFileDrop(index)}
-                    onDragEnd={() => setDragIndex(null)}
-                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
-                      dragIndex === index
-                        ? "border-[#ccff00] bg-[#ccff00]/10"
-                        : "border-white/10 bg-black/30"
-                    }`}
-                  >
-                    {tool === "merge" && (
-                      <span className="cursor-grab select-none text-lg text-white/35" title="Drag to reorder">☷</span>
-                    )}
-
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white/60">
-                      {index + 1}
-                    </span>
-
-                    <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
-
-                    {tool === "merge" && (
-                      <div className="flex shrink-0 gap-1">
-                        <button
-                          onClick={() => moveFile(index, index - 1)}
-                          disabled={index === 0}
-                          className="rounded-lg px-2 py-1 text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20"
-                          title="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveFile(index, index + 1)}
-                          disabled={index === files.length - 1}
-                          className="rounded-lg px-2 py-1 text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20"
-                          title="Move down"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="shrink-0 text-xs text-white/40 hover:text-white"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           )}
 
           <button
-            onClick={process}
+            onClick={tool === "merge" ? openMergeReview : process}
             disabled={busy}
             className="mt-6 w-full rounded-2xl bg-[#ccff00] px-6 py-4 font-black text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Processing..." :
-             tool === "merge" ? "Merge PDF →" :
+             tool === "merge" ? "Continue →" :
              tool === "split" ? "Split PDF →" :
              tool === "jpg" ? "Create PDF →" :
              tool === "images" ? "Convert to JPG →" :

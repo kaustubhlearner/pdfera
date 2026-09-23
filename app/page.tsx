@@ -2,7 +2,6 @@
 
 import { DragEvent, useRef, useState } from "react";
 import { PDFDocument, degrees } from "pdf-lib";
-import * as pdfjsLib from "pdfjs-dist";
 
 type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress";
 
@@ -192,6 +191,7 @@ export default function Home() {
 
     setBusy(true);
     try {
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
       const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {

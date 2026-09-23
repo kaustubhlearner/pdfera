@@ -8,16 +8,29 @@ type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorde
 const MAX_MERGE_FILES = 100;
 
 const tools = [
-  { id: "merge" as Tool, icon: "↔", title: "Merge PDF", text: "Combine up to 100 PDFs into one file." },
-  { id: "split" as Tool, icon: "✂", title: "Split PDF", text: "Extract a page range into a new PDF." },
-  { id: "jpg" as Tool, icon: "▣", title: "JPG to PDF", text: "Turn JPG or PNG images into a PDF." },
-  { id: "images" as Tool, icon: "▤", title: "PDF to JPG", text: "Convert PDF pages into JPG images." },
-  { id: "rotate" as Tool, icon: "↻", title: "Rotate PDF", text: "Rotate every page by 90 degrees." },
-  { id: "delete" as Tool, icon: "⌫", title: "Delete Pages", text: "Remove selected pages from a PDF." },
-  { id: "reorder" as Tool, icon: "☷", title: "Reorder Pages", text: "Change page order using page numbers." },
-  { id: "compress" as Tool, icon: "↓", title: "Compress PDF", text: "Optimize the PDF structure in your browser." },
-  { id: "stamp" as Tool, icon: "✒", title: "Stamp & Sign", text: "Add a stamp or signature to every page." },
+  { id: "merge" as Tool, icon: "merge", title: "Merge PDF", text: "Combine up to 100 PDFs into one file." },
+  { id: "split" as Tool, icon: "split", title: "Split PDF", text: "Extract a page range into a new PDF." },
+  { id: "jpg" as Tool, icon: "image", title: "JPG to PDF", text: "Turn JPG or PNG images into a PDF." },
+  { id: "images" as Tool, icon: "file-image", title: "PDF to JPG", text: "Convert PDF pages into JPG images." },
+  { id: "rotate" as Tool, icon: "rotate", title: "Rotate PDF", text: "Rotate every page by 90 degrees." },
+  { id: "delete" as Tool, icon: "trash", title: "Delete Pages", text: "Remove selected pages from a PDF." },
+  { id: "reorder" as Tool, icon: "reorder", title: "Reorder Pages", text: "Change page order using page numbers." },
+  { id: "compress" as Tool, icon: "compress", title: "Compress PDF", text: "Optimize the PDF structure in your browser." },
+  { id: "stamp" as Tool, icon: "stamp", title: "Stamp & Sign", text: "Add a stamp or signature to every page." },
 ];
+
+function ToolIcon({ type }: { type: string }) {
+  const common = "h-7 w-7";
+  if (type === "merge") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 7h6l3 3h5"/><path d="M5 17h6l3-3h5"/><path d="M16 6l3 4-3 4"/><path d="M8 13l-3 4 3 4"/></svg>;
+  if (type === "split") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 5l8 14"/><path d="M16 5L8 19"/><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/></svg>;
+  if (type === "image") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 5"/></svg>;
+  if (type === "file-image") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5"/><circle cx="9" cy="12" r="1.4"/><path d="m7 18 3-3 2 2 2-2 2 3"/></svg>;
+  if (type === "rotate") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>;
+  if (type === "trash") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>;
+  if (type === "reorder") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 6h3M5 12h3M5 18h3"/><path d="M12 6h7M12 12h7M12 18h7"/><path d="M10 4v16"/></svg>;
+  if (type === "compress") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5"/><path d="M8 8 3 3M16 16l5 5M16 8l5-5M8 16l-5 5"/></svg>;
+  return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3v18"/><path d="M7 8h10"/><path d="M8 18h8"/><path d="M9 8c0 5-1 7-3 9M15 8c0 5 1 7 3 9"/></svg>;
+}
 
 export default function Home() {
   const [tool, setTool] = useState<Tool>("merge");
@@ -694,11 +707,11 @@ export default function Home() {
           <button
             key={item.id}
             onClick={() => selectTool(item.id)}
-            className={`rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
+            className={`group rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
               tool === item.id ? "border-[#ccff00]/60 bg-[#ccff00]/8" : "border-white/10 bg-white/[0.03]"
             }`}
           >
-            <div className="mb-7 text-3xl">{item.icon}</div>
+            <div className="mb-7 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/85 transition group-hover:border-[#ccff00]/30 group-hover:bg-[#ccff00]/10 group-hover:text-[#ccff00]"><ToolIcon type={item.icon} /></div>
             <h2 className="text-lg font-bold">{item.title}</h2>
             <p className="mt-2 text-sm text-white/45">{item.text}</p>
           </button>

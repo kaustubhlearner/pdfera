@@ -1,14 +1,22 @@
 "use client";
 
 import { DragEvent, useRef, useState } from "react";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, degrees } from "pdf-lib";
+import * as pdfjsLib from "pdfjs-dist";
 
-type Tool = "merge" | "split" | "jpg";
+type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress";
+
+const MAX_MERGE_FILES = 100;
 
 const tools = [
-  { id: "merge" as Tool, icon: "↔", title: "Merge PDF", text: "Combine multiple PDFs into one file." },
+  { id: "merge" as Tool, icon: "↔", title: "Merge PDF", text: "Combine up to 100 PDFs into one file." },
   { id: "split" as Tool, icon: "✂", title: "Split PDF", text: "Extract a page range into a new PDF." },
   { id: "jpg" as Tool, icon: "▣", title: "JPG to PDF", text: "Turn JPG or PNG images into a PDF." },
+  { id: "images" as Tool, icon: "▤", title: "PDF to JPG", text: "Convert PDF pages into JPG images." },
+  { id: "rotate" as Tool, icon: "↻", title: "Rotate PDF", text: "Rotate every page by 90 degrees." },
+  { id: "delete" as Tool, icon: "⌫", title: "Delete Pages", text: "Remove selected pages from a PDF." },
+  { id: "reorder" as Tool, icon: "☷", title: "Reorder Pages", text: "Change page order using page numbers." },
+  { id: "compress" as Tool, icon: "↓", title: "Compress PDF", text: "Optimize the PDF structure in your browser." },
 ];
 
 export default function Home() {
@@ -17,6 +25,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [pageRange, setPageRange] = useState("1");
+  const [pageOrder, setPageOrder] = useState("");
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +38,21 @@ export default function Home() {
     if (allowed.length === 0) {
       setMessage(tool === "jpg" ? "Please select JPG or PNG images." : "Please select PDF files.");
       return;
+    }
+
+    if (tool === "merge") {
+      const remaining = MAX_MERGE_FILES - files.length;
+
+      if (remaining <= 0) {
+        setMessage("Maximum 100 PDF files can be merged at once.");
+        return;
+      }
+
+      if (allowed.length > remaining) {
+        setFiles((current) => [...current, ...allowed.slice(0, remaining)]);
+        setMessage(`Maximum limit is 100 PDFs. Only the first ${remaining} selected file(s) were added.`);
+        return;
+      }
     }
 
     setFiles((current) => [...current, ...allowed]);
@@ -51,6 +75,11 @@ export default function Home() {
       return;
     }
 
+    if (files.length > MAX_MERGE_FILES) {
+      setMessage("Maximum 100 PDF files can be merged at once.");
+      return;
+    }
+
     setBusy(true);
     try {
       const merged = await PDFDocument.create();
@@ -62,7 +91,7 @@ export default function Home() {
       }
 
       download(await merged.save(), "pdfera-merged.pdf");
-      setMessage("Merged PDF downloaded successfully.");
+      setMessage(`Merged ${files.length} PDFs successfully.`);
     } catch {
       setMessage("Could not process one of the PDFs.");
     } finally {
@@ -76,52 +105,47 @@ export default function Home() {
       return;
     }
 
-    const source = await PDFDocument.load(await files[0].arrayBuffer());
-    const totalPages = source.getPageCount();
-    const parts = pageRange
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-    const pageNumbers: number[] = [];
-
-    for (const part of parts) {
-      if (part.includes("-")) {
-        const range = part.split("-");
-        const start = Number(range[0]);
-        const end = Number(range[1]);
-
-        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > totalPages || start > end) {
-          setMessage("Invalid page range. Example: 1-3,5");
-          return;
-        }
-
-        for (let page = start; page <= end; page++) {
-          if (!pageNumbers.includes(page)) pageNumbers.push(page);
-        }
-      } else {
-        const page = Number(part);
-
-        if (!Number.isInteger(page) || page < 1 || page > totalPages) {
-          setMessage("Invalid page number. Example: 1,3,5");
-          return;
-        }
-
-        if (!pageNumbers.includes(page)) pageNumbers.push(page);
-      }
-    }
-
-    if (pageNumbers.length === 0) {
-      setMessage("Enter pages like 1,3,5 or 1-3.");
-      return;
-    }
-
     setBusy(true);
     try {
+      const source = await PDFDocument.load(await files[0].arrayBuffer());
+      const totalPages = source.getPageCount();
+      const parts = pageRange.split(",").map((part) => part.trim()).filter(Boolean);
+      const pageNumbers: number[] = [];
+
+      for (const part of parts) {
+        if (part.includes("-")) {
+          const range = part.split("-");
+          const start = Number(range[0]);
+          const end = Number(range[1]);
+
+          if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > totalPages || start > end) {
+            setMessage("Invalid page range. Example: 1-3,5");
+            return;
+          }
+
+          for (let page = start; page <= end; page++) {
+            if (!pageNumbers.includes(page)) pageNumbers.push(page);
+          }
+        } else {
+          const page = Number(part);
+
+          if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+            setMessage("Invalid page number. Example: 1,3,5");
+            return;
+          }
+
+          if (!pageNumbers.includes(page)) pageNumbers.push(page);
+        }
+      }
+
+      if (pageNumbers.length === 0) {
+        setMessage("Enter pages like 1,3,5 or 1-3.");
+        return;
+      }
+
       const output = await PDFDocument.create();
       const copied = await output.copyPages(source, pageNumbers.map((page) => page - 1));
       copied.forEach((page) => output.addPage(page));
-
       download(await output.save(), "pdfera-split.pdf");
       setMessage("Selected pages downloaded successfully.");
     } catch {
@@ -148,12 +172,7 @@ export default function Home() {
           : await pdf.embedJpg(bytes);
 
         const page = pdf.addPage([image.width, image.height]);
-        page.drawImage(image, {
-          x: 0,
-          y: 0,
-          width: image.width,
-          height: image.height,
-        });
+        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
       }
 
       download(await pdf.save(), "pdfera-images.pdf");
@@ -165,10 +184,183 @@ export default function Home() {
     }
   }
 
+  async function pdfToJpg() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF for PDF to JPG.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) throw new Error("Canvas is not supported.");
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvas, canvasContext: context, viewport }).promise;
+
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, "image/jpeg", 0.9)
+        );
+
+        if (!blob) throw new Error("Could not create image.");
+
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `pdfera-page-${pageNumber}.jpg`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+
+      setMessage(`Converted ${pdf.numPages} page(s) to JPG.`);
+    } catch {
+      setMessage("Could not convert the PDF to JPG.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rotatePdf() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const pdf = await PDFDocument.load(await files[0].arrayBuffer());
+
+      pdf.getPages().forEach((page) => {
+        page.setRotation(degrees((page.getRotation().angle + 90) % 360));
+      });
+
+      download(await pdf.save(), "pdfera-rotated.pdf");
+      setMessage("PDF rotated successfully.");
+    } catch {
+      setMessage("Could not rotate the PDF.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePages() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const source = await PDFDocument.load(await files[0].arrayBuffer());
+      const totalPages = source.getPageCount();
+      const deleteNumbers = parsePageNumbers(pageRange, totalPages);
+
+      if (deleteNumbers.length === 0) {
+        setMessage("Enter pages to delete, for example 2,4 or 2-5.");
+        return;
+      }
+
+      if (deleteNumbers.length >= totalPages) {
+        setMessage("At least one page must remain in the PDF.");
+        return;
+      }
+
+      const output = await PDFDocument.create();
+      const keepIndexes: number[] = [];
+
+      for (let page = 1; page <= totalPages; page++) {
+        if (!deleteNumbers.includes(page)) keepIndexes.push(page - 1);
+      }
+
+      const copied = await output.copyPages(source, keepIndexes);
+      copied.forEach((page) => output.addPage(page));
+
+      download(await output.save(), "pdfera-pages-deleted.pdf");
+      setMessage("Selected pages deleted successfully.");
+    } catch {
+      setMessage("Could not delete pages.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reorderPages() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const source = await PDFDocument.load(await files[0].arrayBuffer());
+      const totalPages = source.getPageCount();
+      const order = pageOrder.split(",").map((part) => Number(part.trim())).filter((page) => Number.isInteger(page));
+
+      if (order.length !== totalPages) {
+        setMessage(`Enter all ${totalPages} page numbers exactly once. Example: 3,1,2`);
+        return;
+      }
+
+      const unique = new Set(order);
+      if (unique.size !== totalPages || order.some((page) => page < 1 || page > totalPages)) {
+        setMessage("Page order must contain every page exactly once.");
+        return;
+      }
+
+      const output = await PDFDocument.create();
+      const copied = await output.copyPages(source, order.map((page) => page - 1));
+      copied.forEach((page) => output.addPage(page));
+
+      download(await output.save(), "pdfera-reordered.pdf");
+      setMessage("PDF pages reordered successfully.");
+    } catch {
+      setMessage("Could not reorder the PDF.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function compressPdf() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const source = await PDFDocument.load(await files[0].arrayBuffer());
+      const before = files[0].size;
+      const bytes = await source.save({ useObjectStreams: true });
+      download(bytes, "pdfera-compressed.pdf");
+
+      const after = bytes.byteLength;
+      const percent = before > 0 ? Math.max(0, Math.round((1 - after / before) * 100)) : 0;
+      setMessage(`Optimized PDF downloaded. Size change: ${percent}% smaller.`);
+    } catch {
+      setMessage("Could not optimize the PDF.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function process() {
     if (tool === "merge") await mergePdfs();
     else if (tool === "split") await splitPdf();
-    else await imagesToPdf();
+    else if (tool === "jpg") await imagesToPdf();
+    else if (tool === "images") await pdfToJpg();
+    else if (tool === "rotate") await rotatePdf();
+    else if (tool === "delete") await deletePages();
+    else if (tool === "reorder") await reorderPages();
+    else await compressPdf();
   }
 
   function selectTool(nextTool: Tool) {
@@ -176,10 +368,12 @@ export default function Home() {
     setFiles([]);
     setMessage("");
     setPageRange("1");
+    setPageOrder("");
   }
 
-  const accept = tool === "jpg" ? "image/jpeg,image/png" : "application/pdf";
-  const multiple = tool !== "split";
+  const needsPdf = tool !== "jpg";
+  const accept = needsPdf ? "application/pdf" : "image/jpeg,image/png";
+  const multiple = tool === "merge" || tool === "jpg";
 
   return (
     <main className="min-h-screen">
@@ -193,32 +387,28 @@ export default function Home() {
       </nav>
 
       <section className="mx-auto max-w-6xl px-6 pb-14 pt-10 text-center">
-        <p className="mb-5 text-sm font-bold uppercase tracking-[0.25em] text-[#ccff00]">
-          PDF tools, made simple
-        </p>
+        <p className="mb-5 text-sm font-bold uppercase tracking-[0.25em] text-[#ccff00]">PDF tools, made simple</p>
         <h1 className="mx-auto max-w-4xl text-5xl font-black tracking-tight sm:text-7xl">
           Work with PDFs.
           <br />
           <span className="text-white/35">No complicated setup.</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-white/55">
-          Merge, split, and convert files directly in your browser. No account and no permanent file storage.
+          Merge, split, convert, rotate and organize files directly in your browser.
         </p>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-4 px-6 pb-10 md:grid-cols-3">
+      <section className="mx-auto grid max-w-6xl gap-4 px-6 pb-10 sm:grid-cols-2 lg:grid-cols-4">
         {tools.map((item) => (
           <button
             key={item.id}
             onClick={() => selectTool(item.id)}
             className={`rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
-              tool === item.id
-                ? "border-[#ccff00]/60 bg-[#ccff00]/8"
-                : "border-white/10 bg-white/[0.03]"
+              tool === item.id ? "border-[#ccff00]/60 bg-[#ccff00]/8" : "border-white/10 bg-white/[0.03]"
             }`}
           >
-            <div className="mb-8 text-3xl">{item.icon}</div>
-            <h2 className="text-xl font-bold">{item.title}</h2>
+            <div className="mb-7 text-3xl">{item.icon}</div>
+            <h2 className="text-lg font-bold">{item.title}</h2>
             <p className="mt-2 text-sm text-white/45">{item.text}</p>
           </button>
         ))}
@@ -229,20 +419,27 @@ export default function Home() {
           <div className="mb-7 flex items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold">
-                {tool === "merge" ? "Merge your PDFs" : tool === "split" ? "Split your PDF" : "Convert images to PDF"}
+                {tool === "merge" ? "Merge your PDFs" :
+                 tool === "split" ? "Split your PDF" :
+                 tool === "jpg" ? "Convert images to PDF" :
+                 tool === "images" ? "Convert PDF to JPG" :
+                 tool === "rotate" ? "Rotate your PDF" :
+                 tool === "delete" ? "Delete PDF pages" :
+                 tool === "reorder" ? "Reorder PDF pages" : "Optimize your PDF"}
               </h2>
               <p className="mt-1 text-sm text-white/40">
-                {tool === "merge"
-                  ? "Add two or more PDF files."
-                  : tool === "split"
-                    ? "Add one PDF and choose the pages you want."
-                    : "Add one or more JPG or PNG images."}
+                {tool === "merge" ? `Add 2 to ${MAX_MERGE_FILES} PDF files.` :
+                 tool === "split" ? "Add one PDF and choose the pages you want." :
+                 tool === "jpg" ? "Add one or more JPG or PNG images." :
+                 tool === "images" ? "Add one PDF. Each page becomes a JPG." :
+                 tool === "rotate" ? "Rotate every page by 90 degrees clockwise." :
+                 tool === "delete" ? "Choose pages to remove." :
+                 tool === "reorder" ? "Enter the complete new page order." :
+                 "Re-save the PDF with object streams enabled."}
               </p>
             </div>
             {files.length > 0 && (
-              <button onClick={() => setFiles([])} className="text-sm text-white/40 hover:text-white">
-                Clear
-              </button>
+              <button onClick={() => setFiles([])} className="text-sm text-white/40 hover:text-white">Clear</button>
             )}
           </div>
 
@@ -267,24 +464,18 @@ export default function Home() {
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             className={`flex min-h-52 w-full flex-col items-center justify-center rounded-3xl border border-dashed px-6 text-center transition ${
-              dragging
-                ? "border-[#ccff00] bg-[#ccff00]/10"
-                : "border-white/15 bg-black/30 hover:border-[#ccff00]/50"
+              dragging ? "border-[#ccff00] bg-[#ccff00]/10" : "border-white/15 bg-black/30 hover:border-[#ccff00]/50"
             }`}
           >
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ccff00] text-2xl text-black">
-              ↑
-            </div>
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ccff00] text-2xl text-black">↑</div>
             <strong>Click or drag & drop {tool === "jpg" ? "images" : "PDFs"}</strong>
-            <span className="mt-2 text-sm text-white/35">
-              Files are processed locally in your browser.
-            </span>
+            <span className="mt-2 text-sm text-white/35">Files are processed locally in your browser.</span>
           </button>
 
-          {tool === "split" && files.length === 1 && (
+          {(tool === "split" || tool === "delete") && files.length === 1 && (
             <div className="mt-5">
               <label className="mb-2 block text-sm font-semibold text-white/70">
-                Pages to extract
+                {tool === "delete" ? "Pages to delete" : "Pages to extract"}
               </label>
               <input
                 value={pageRange}
@@ -292,28 +483,29 @@ export default function Home() {
                 placeholder="Example: 1,3,5 or 1-3,5"
                 className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
               />
-              <p className="mt-2 text-xs text-white/35">
-                Use page numbers, ranges, or both. Example: 1-3,5,8-10
-              </p>
+              <p className="mt-2 text-xs text-white/35">Use page numbers, ranges, or both.</p>
+            </div>
+          )}
+
+          {tool === "reorder" && files.length === 1 && (
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-semibold text-white/70">New page order</label>
+              <input
+                value={pageOrder}
+                onChange={(event) => setPageOrder(event.target.value)}
+                placeholder="Example: 3,1,2,4"
+                className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60"
+              />
+              <p className="mt-2 text-xs text-white/35">Use every page number exactly once.</p>
             </div>
           )}
 
           {files.length > 0 && (
             <div className="mt-5 space-y-2">
               {files.map((file, index) => (
-                <div
-                  key={file.name + index}
-                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3"
-                >
-                  <span className="truncate text-sm">
-                    {index + 1}. {file.name}
-                  </span>
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="ml-4 text-xs text-white/40 hover:text-white"
-                  >
-                    Remove
-                  </button>
+                <div key={file.name + index} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
+                  <span className="truncate text-sm">{index + 1}. {file.name}</span>
+                  <button onClick={() => removeFile(index)} className="ml-4 text-xs text-white/40 hover:text-white">Remove</button>
                 </div>
               ))}
             </div>
@@ -324,26 +516,53 @@ export default function Home() {
             disabled={busy}
             className="mt-6 w-full rounded-2xl bg-[#ccff00] px-6 py-4 font-black text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy
-              ? "Processing..."
-              : tool === "merge"
-                ? "Merge PDF →"
-                : tool === "split"
-                  ? "Split PDF →"
-                  : "Create PDF →"}
+            {busy ? "Processing..." :
+             tool === "merge" ? "Merge PDF →" :
+             tool === "split" ? "Split PDF →" :
+             tool === "jpg" ? "Create PDF →" :
+             tool === "images" ? "Convert to JPG →" :
+             tool === "rotate" ? "Rotate PDF →" :
+             tool === "delete" ? "Delete Pages →" :
+             tool === "reorder" ? "Reorder PDF →" : "Optimize PDF →"}
           </button>
 
-          {message && (
-            <p className="mt-4 text-center text-sm text-[#ccff00]">{message}</p>
-          )}
+          {message && <p className="mt-4 text-center text-sm text-[#ccff00]">{message}</p>}
         </div>
       </section>
 
       <footer className="border-t border-white/10 px-6 py-8 text-center text-xs text-white/30">
-        PDFera • Built as a free-first PDF toolkit
+        PDFera • Built as a free-first PDF toolkit • Merge limit: 100 PDFs
       </footer>
     </main>
   );
+}
+
+function parsePageNumbers(value: string, totalPages: number) {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  const pageNumbers: number[] = [];
+
+  for (const part of parts) {
+    if (part.includes("-")) {
+      const range = part.split("-");
+      const start = Number(range[0]);
+      const end = Number(range[1]);
+
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > totalPages || start > end) {
+        return [];
+      }
+
+      for (let page = start; page <= end; page++) {
+        if (!pageNumbers.includes(page)) pageNumbers.push(page);
+      }
+    } else {
+      const page = Number(part);
+
+      if (!Number.isInteger(page) || page < 1 || page > totalPages) return [];
+      if (!pageNumbers.includes(page)) pageNumbers.push(page);
+    }
+  }
+
+  return pageNumbers;
 }
 
 function download(bytes: Uint8Array, filename: string) {

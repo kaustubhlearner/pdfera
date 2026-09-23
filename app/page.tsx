@@ -6,6 +6,10 @@ import { PDFDocument, degrees, rgb } from "pdf-lib";
 type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp";
 
 const MAX_MERGE_FILES = 100;
+const MAX_PDF_SIZE = 50 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
+const MAX_TOTAL_SIZE = 250 * 1024 * 1024;
+const MAX_PDF_PAGES = 300;
 
 const tools = [
   { id: "merge" as Tool, icon: "merge", title: "Merge PDF", text: "Combine up to 100 PDFs into one file." },
@@ -55,14 +59,38 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayInputRef = useRef<HTMLInputElement>(null);
 
-  function addFiles(list: FileList | File[]) {
+  async function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);
-    const allowed = tool === "jpg"
+    const isImageTool = tool === "jpg";
+    const candidates = isImageTool
       ? selected.filter((file) => file.type === "image/jpeg" || file.type === "image/png")
       : selected.filter((file) => file.type === "application/pdf");
 
-    if (allowed.length === 0) {
-      setMessage(tool === "jpg" ? "Please select JPG or PNG images." : "Please select PDF files.");
+    if (candidates.length === 0) {
+      setMessage(isImageTool ? "Please select JPG or PNG images." : "Please select PDF files.");
+      return;
+    }
+
+    const valid: File[] = [];
+    let rejected = 0;
+
+    for (const file of candidates) {
+      const maxSize = isImageTool ? MAX_IMAGE_SIZE : MAX_PDF_SIZE;
+
+      if (file.size === 0 || file.size > maxSize || !(await hasValidFileSignature(file, isImageTool))) {
+        rejected++;
+        continue;
+      }
+
+      valid.push(file);
+    }
+
+    if (valid.length === 0) {
+      setMessage(
+        isImageTool
+          ? "No valid JPG/PNG files found. Images must be valid and under 15 MB each."
+          : "No valid PDF files found. PDFs must be valid and under 50 MB each."
+      );
       return;
     }
 
@@ -74,21 +102,36 @@ export default function Home() {
         return;
       }
 
-      if (allowed.length > remaining) {
-        setFiles((current) => [...current, ...allowed.slice(0, remaining)]);
-        setMessage(`Maximum limit is 100 PDFs. Only the first ${remaining} selected file(s) were added.`);
-        return;
-      }
+      valid.splice(remaining);
+    } else if (valid.length > 1 && tool !== "jpg") {
+      valid.splice(1);
     }
 
-    setFiles((current) => [...current, ...allowed]);
-    setMessage("");
+    const currentTotal = files.reduce((sum, file) => sum + file.size, 0);
+    const accepted: File[] = [];
+
+    for (const file of valid) {
+      if (currentTotal + accepted.reduce((sum, item) => sum + item.size, 0) + file.size > MAX_TOTAL_SIZE) break;
+      accepted.push(file);
+    }
+
+    if (accepted.length === 0) {
+      setMessage("Total selected files cannot exceed 250 MB.");
+      return;
+    }
+
+    setFiles((current) => [...current, ...accepted]);
+    setMessage(
+      rejected > 0 || accepted.length < valid.length
+        ? `${accepted.length} file(s) added. Some files were skipped for safety or size limits.`
+        : ""
+    );
   }
 
   function handleDrop(event: DragEvent<HTMLButtonElement>) {
     event.preventDefault();
     setDragging(false);
-    addFiles(event.dataTransfer.files);
+    void addFiles(event.dataTransfer.files);
   }
 
   function removeFile(index: number) {
@@ -212,6 +255,10 @@ export default function Home() {
       const pdf = await PDFDocument.create();
 
       for (const file of files) {
+        if (file.size > MAX_IMAGE_SIZE) {
+          setMessage("Each image must be under 15 MB.");
+          return;
+        }
         const bytes = await file.arrayBuffer();
         const image = file.type === "image/png"
           ? await pdf.embedPng(bytes)
@@ -240,6 +287,10 @@ export default function Home() {
     try {
       const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
       const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
+      if (pdf.numPages > MAX_PDF_PAGES) {
+        setMessage(`This PDF has ${pdf.numPages} pages. Maximum supported is ${MAX_PDF_PAGES} pages for PDF to JPG.`);
+        return;
+      }
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
@@ -395,6 +446,11 @@ export default function Home() {
     setBusy(true);
     try {
       const pdf = await PDFDocument.load(await files[0].arrayBuffer());
+      const totalPages = pdf.getPageCount();
+      if (totalPages > MAX_PDF_PAGES) {
+        setMessage(`This PDF has ${totalPages} pages. Maximum supported is ${MAX_PDF_PAGES} pages per operation.`);
+        return;
+      }
       let image = null;
 
       if (overlayFile) {
@@ -404,7 +460,6 @@ export default function Home() {
           : await pdf.embedJpg(imageBytes);
       }
 
-      const totalPages = pdf.getPageCount();
       let selectedPages: number[] = [];
 
       if (overlayPages === "all") {
@@ -613,7 +668,7 @@ export default function Home() {
             multiple
             className="hidden"
             onChange={(event) => {
-              if (event.target.files) addFiles(event.target.files);
+              if (event.target.files) void addFiles(event.target.files);
               event.currentTarget.value = "";
             }}
           />
@@ -836,7 +891,18 @@ export default function Home() {
                 <label className="mb-2 block text-sm font-semibold text-white/70">
                   {overlayType === "stamp" ? "Stamp image (optional)" : "Signature image"}
                 </label>
-                <input ref={overlayInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { setOverlayFile(event.target.files?.[0] || null); event.currentTarget.value = ""; }} />
+                <input ref={overlayInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={async (event) => {
+                    const file = event.target.files?.[0] || null;
+                    event.currentTarget.value = "";
+                    if (!file) return;
+                    if (file.size > MAX_IMAGE_SIZE || !(await hasValidFileSignature(file, true))) {
+                      setOverlayFile(null);
+                      setMessage("Stamp/signature image must be a valid JPG or PNG under 15 MB.");
+                      return;
+                    }
+                    setOverlayFile(file);
+                    setMessage("");
+                  }} />
                 <button onClick={() => overlayInputRef.current?.click()} className="w-full rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50">
                   <span className="block font-semibold">{overlayFile ? overlayFile.name : `Choose ${overlayType} image`}</span>
                   <span className="mt-1 block text-xs text-white/35">PNG with transparent background is recommended.</span>
@@ -964,6 +1030,33 @@ function download(bytes: Uint8Array, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+
+
+async function hasValidFileSignature(file: File, isImage: boolean) {
+  const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+
+  if (!isImage) {
+    return bytes.length >= 5 &&
+      bytes[0] === 0x25 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x44 &&
+      bytes[3] === 0x46 &&
+      bytes[4] === 0x2d;
+  }
+
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png = bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a;
+
+  return jpeg || png;
+}
 
 function hexToRgb(hex: string) {
   const value = hex.replace("#", "");

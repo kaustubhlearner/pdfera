@@ -26,6 +26,7 @@ export default function Home() {
   const [pageRange, setPageRange] = useState("1");
   const [pageOrder, setPageOrder] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function addFiles(list: FileList | File[]) {
@@ -66,6 +67,26 @@ export default function Home() {
 
   function removeFile(index: number) {
     setFiles((current) => current.filter((_, i) => i !== index));
+  }
+
+  function moveFile(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= files.length) return;
+
+    setFiles((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }
+
+  function handleFileDragStart(index: number) {
+    setDragIndex(index);
+  }
+
+  function handleFileDrop(index: number) {
+    if (dragIndex !== null) moveFile(dragIndex, index);
+    setDragIndex(null);
   }
 
   async function mergePdfs() {
@@ -501,13 +522,68 @@ export default function Home() {
           )}
 
           {files.length > 0 && (
-            <div className="mt-5 space-y-2">
-              {files.map((file, index) => (
-                <div key={file.name + index} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
-                  <span className="truncate text-sm">{index + 1}. {file.name}</span>
-                  <button onClick={() => removeFile(index)} className="ml-4 text-xs text-white/40 hover:text-white">Remove</button>
+            <div className="mt-5">
+              {tool === "merge" && (
+                <div className="mb-3 rounded-2xl border border-[#ccff00]/20 bg-[#ccff00]/5 px-4 py-3 text-sm text-white/65">
+                  <span className="font-semibold text-[#ccff00]">Customize order:</span> Drag the PDFs up or down. The first PDF will be at the front and the last PDF will be at the end.
                 </div>
-              ))}
+              )}
+
+              <div className="space-y-2">
+                {files.map((file, index) => (
+                  <div
+                    key={file.name + index}
+                    draggable={tool === "merge"}
+                    onDragStart={() => handleFileDragStart(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => handleFileDrop(index)}
+                    onDragEnd={() => setDragIndex(null)}
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+                      dragIndex === index
+                        ? "border-[#ccff00] bg-[#ccff00]/10"
+                        : "border-white/10 bg-black/30"
+                    }`}
+                  >
+                    {tool === "merge" && (
+                      <span className="cursor-grab select-none text-lg text-white/35" title="Drag to reorder">☷</span>
+                    )}
+
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-white/60">
+                      {index + 1}
+                    </span>
+
+                    <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
+
+                    {tool === "merge" && (
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          onClick={() => moveFile(index, index - 1)}
+                          disabled={index === 0}
+                          className="rounded-lg px-2 py-1 text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20"
+                          title="Move up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moveFile(index, index + 1)}
+                          disabled={index === files.length - 1}
+                          className="rounded-lg px-2 py-1 text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20"
+                          title="Move down"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="shrink-0 text-xs text-white/40 hover:text-white"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

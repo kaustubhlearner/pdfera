@@ -1,0 +1,8 @@
+{
+  "name":"pdfera",
+  "version":"1.0.0",
+  "private":true,
+  "scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"next lint"},
+  "dependencies":{"next":"latest","react":"latest","react-dom":"latest","pdf-lib":"^1.17.1"},
+  "devDependencies":{"@types/node":"latest","@types/react":"latest","@types/react-dom":"latest","typescript":"latest","tailwindcss":"latest","@tailwindcss/postcss":"latest","postcss":"latest"}
+}

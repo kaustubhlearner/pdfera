@@ -88,7 +88,6 @@ export default function Home() {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
           const pdf = await pdfjsLib.getDocument({
             data: await file.arrayBuffer(),
-            disableWorker: true,
           }).promise;
 
           const page = await pdf.getPage(1);

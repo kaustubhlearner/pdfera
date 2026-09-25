@@ -72,6 +72,13 @@ export default function Home() {
   const [overlayPageRange, setOverlayPageRange] = useState("1");
   const [stampText, setStampText] = useState("");
   const [stampColor, setStampColor] = useState("#ccff00");
+  const [stampThumbnails, setStampThumbnails] = useState<Record<number, string>>({});
+  const [stampLoading, setStampLoading] = useState<Record<number, boolean>>({});
+  const [stampErrors, setStampErrors] = useState<Record<number, boolean>>({});
+  const [stampSelectedPages, setStampSelectedPages] = useState<number[]>([]);
+  const [stampTotalPages, setStampTotalPages] = useState(0);
+  const [stampAssetPreview, setStampAssetPreview] = useState<string>("");
+  const [stampAssetLoading, setStampAssetLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayInputRef = useRef<HTMLInputElement>(null);
 
@@ -220,6 +227,125 @@ export default function Home() {
   }, [files, tool, editorReview]);
 
 
+
+  useEffect(() => {
+    if (tool !== "stamp" || files.length !== 1) {
+      setStampThumbnails({});
+      setStampLoading({});
+      setStampErrors({});
+      setStampSelectedPages([]);
+      setStampTotalPages(0);
+      return;
+    }
+
+    let cancelled = false;
+    async function renderStampPages() {
+      try {
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+          import.meta.url
+        ).toString();
+
+        const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
+        const count = Math.min(pdf.numPages, MAX_PDF_PAGES);
+        if (!cancelled) {
+          setStampTotalPages(count);
+          setStampSelectedPages(Array.from({ length: count }, (_, index) => index + 1));
+        }
+
+        for (let pageNumber = 1; pageNumber <= count; pageNumber++) {
+          if (cancelled) break;
+          setStampLoading((current) => ({ ...current, [pageNumber]: true }));
+          try {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 0.55 });
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Canvas unavailable");
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            await page.render({ canvas, canvasContext: context, viewport }).promise;
+            if (!cancelled) {
+              setStampThumbnails((current) => ({
+                ...current,
+                [pageNumber]: canvas.toDataURL("image/jpeg", 0.8),
+              }));
+            }
+            page.cleanup();
+          } catch {
+            if (!cancelled) setStampErrors((current) => ({ ...current, [pageNumber]: true }));
+          } finally {
+            if (!cancelled) setStampLoading((current) => ({ ...current, [pageNumber]: false }));
+          }
+        }
+        await pdf.destroy();
+      } catch {
+        if (!cancelled) setMessage("Could not preview this PDF.");
+      }
+    }
+    void renderStampPages();
+    return () => { cancelled = true; };
+  }, [files, tool]);
+
+  useEffect(() => {
+    if (!overlayFile) {
+      setStampAssetPreview("");
+      return;
+    }
+
+    let cancelled = false;
+    async function previewStampAsset() {
+      setStampAssetLoading(true);
+      try {
+        if (overlayFile.type === "image/png" || overlayFile.type === "image/jpeg" || overlayFile.type === "image/svg+xml") {
+          if (!cancelled) setStampAssetPreview(URL.createObjectURL(overlayFile));
+          return;
+        }
+
+        if (overlayFile.type === "application/pdf" || overlayFile.name.toLowerCase().endsWith(".pdf")) {
+          const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+            import.meta.url
+          ).toString();
+          const pdf = await pdfjsLib.getDocument({ data: await overlayFile.arrayBuffer() }).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 0.5 });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Canvas unavailable");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await page.render({ canvas, canvasContext: context, viewport }).promise;
+          if (!cancelled) setStampAssetPreview(canvas.toDataURL("image/png"));
+          await pdf.destroy();
+        }
+      } catch {
+        if (!cancelled) setStampAssetPreview("");
+      } finally {
+        if (!cancelled) setStampAssetLoading(false);
+      }
+    }
+    void previewStampAsset();
+    return () => { cancelled = true; };
+  }, [overlayFile]);
+
+  function toggleStampPage(pageNumber: number) {
+    setStampSelectedPages((current) =>
+      current.includes(pageNumber)
+        ? current.filter((page) => page !== pageNumber)
+        : [...current, pageNumber].sort((a, b) => a - b)
+    );
+  }
+
+  function selectAllStampPages() {
+    setStampSelectedPages(Array.from({ length: stampTotalPages }, (_, index) => index + 1));
+  }
+
+  function clearStampPages() {
+    setStampSelectedPages([]);
+  }
 
   async function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);
@@ -670,7 +796,12 @@ export default function Home() {
     }
 
     if (overlayType === "signature" && !overlayFile) {
-      setMessage("Upload your signature image first.");
+      setMessage("Upload your signature file first.");
+      return;
+    }
+
+    if (overlayFile && stampSelectedPages.length === 0) {
+      setMessage("Select at least one PDF page for the stamp/signature.");
       return;
     }
 
@@ -687,23 +818,60 @@ export default function Home() {
       let image = null;
 
       if (overlayFile) {
-        const imageBytes = await overlayFile.arrayBuffer();
-        image = overlayFile.type === "image/png"
-          ? await pdf.embedPng(imageBytes)
-          : await pdf.embedJpg(imageBytes);
-      }
+        const fileName = overlayFile.name.toLowerCase();
 
-      let selectedPages: number[] = [];
+        if (overlayFile.type === "image/png") {
+          image = await pdf.embedPng(await overlayFile.arrayBuffer());
+        } else if (overlayFile.type === "image/jpeg" || overlayFile.type === "image/jpg") {
+          image = await pdf.embedJpg(await overlayFile.arrayBuffer());
+        } else if (
+          overlayFile.type === "image/svg+xml" ||
+          fileName.endsWith(".svg") ||
+          overlayFile.type === "application/pdf" ||
+          fileName.endsWith(".pdf")
+        ) {
+          const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+            import.meta.url
+          ).toString();
 
-      if (overlayPages === "all") {
-        for (let page = 1; page <= totalPages; page++) selectedPages.push(page);
-      } else {
-        selectedPages = parsePageNumbers(overlayPageRange, totalPages);
-        if (selectedPages.length === 0) {
-          setMessage("Enter valid pages, for example 1,3,5 or 1-3.");
-          return;
+          const assetPdf = overlayFile.type === "application/pdf" || fileName.endsWith(".pdf")
+            ? await pdfjsLib.getDocument({ data: await overlayFile.arrayBuffer() }).promise
+            : null;
+
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Canvas unavailable");
+
+          if (assetPdf) {
+            const page = await assetPdf.getPage(1);
+            const viewport = page.getViewport({ scale: 2 });
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            await page.render({ canvas, canvasContext: context, viewport }).promise;
+            await assetPdf.destroy();
+          } else {
+            const url = URL.createObjectURL(overlayFile);
+            const imageElement = new Image();
+            await new Promise<void>((resolve, reject) => {
+              imageElement.onload = () => resolve();
+              imageElement.onerror = () => reject(new Error("Could not read SVG"));
+              imageElement.src = url;
+            });
+            canvas.width = imageElement.naturalWidth || 1200;
+            canvas.height = imageElement.naturalHeight || 1200;
+            context.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+          }
+
+          image = await pdf.embedPng(canvas.toDataURL("image/png"));
         }
       }
+
+      const selectedPages = stampSelectedPages.filter(
+        (page) => page >= 1 && page <= totalPages
+      );
 
       const sizeRatio = overlaySize === "small" ? 0.16 : overlaySize === "large" ? 0.32 : 0.24;
       const opacity = overlayOpacity / 100;
@@ -856,6 +1024,13 @@ export default function Home() {
     setOverlayPageRange("1");
     setStampText("");
     setStampColor("#ccff00");
+    setStampThumbnails({});
+    setStampLoading({});
+    setStampErrors({});
+    setStampSelectedPages([]);
+    setStampTotalPages(0);
+    setStampAssetPreview("");
+    setStampAssetLoading(false);
   }
 
   function openEditorReview() {
@@ -1481,32 +1656,109 @@ export default function Home() {
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-white/70">
-                  {overlayType === "stamp" ? "Stamp image (optional)" : "Signature image"}
+                  {overlayType === "stamp" ? "Stamp / seal file" : "Signature file"}
                 </label>
-                <input ref={overlayInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={async (event) => {
+                <input
+                  ref={overlayInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,application/pdf,.svg,.pdf"
+                  className="hidden"
+                  onChange={async (event) => {
                     const file = event.target.files?.[0] || null;
                     event.currentTarget.value = "";
                     if (!file) return;
-                    if (file.size > MAX_IMAGE_SIZE || !(await hasValidFileSignature(file, true))) {
+                    const name = file.name.toLowerCase();
+                    const supported =
+                      file.type === "image/png" ||
+                      file.type === "image/jpeg" ||
+                      file.type === "image/svg+xml" ||
+                      file.type === "application/pdf" ||
+                      name.endsWith(".svg") ||
+                      name.endsWith(".pdf");
+
+                    if (!supported || file.size > MAX_IMAGE_SIZE) {
                       setOverlayFile(null);
-                      setMessage("Stamp/signature image must be a valid JPG or PNG under 15 MB.");
+                      setMessage("Use a PNG, JPG, SVG, or PDF stamp/seal file under 15 MB.");
                       return;
                     }
+
                     setOverlayFile(file);
                     setMessage("");
-                  }} />
-                <button onClick={() => overlayInputRef.current?.click()} className="w-full rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50">
-                  <span className="block font-semibold">{overlayFile ? overlayFile.name : `Choose ${overlayType} image`}</span>
-                  <span className="mt-1 block text-xs text-white/35">PNG with transparent background is recommended.</span>
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => overlayInputRef.current?.click()}
+                  className="w-full cursor-pointer rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-4 text-left transition hover:border-[#ccff00]/50"
+                >
+                  <span className="block truncate font-semibold">{overlayFile ? overlayFile.name : `Choose ${overlayType} file`}</span>
+                  <span className="mt-1 block text-xs text-white/35">PNG, JPG, SVG or PDF • max 15 MB.</span>
                 </button>
+                {overlayFile && (
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+                      {stampAssetLoading ? (
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/15 border-t-black" />
+                      ) : stampAssetPreview ? (
+                        <img src={stampAssetPreview} alt="Stamp preview" className="h-full w-full object-contain p-1" />
+                      ) : (
+                        <span className="text-xs font-black text-black">STAMP</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{overlayFile.name}</p>
+                      <p className="text-xs text-white/35">Ready to place on selected pages</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-white/70">Apply to pages</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setOverlayPages("all")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayPages === "all" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>All pages</button>
-                  <button onClick={() => setOverlayPages("selected")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${overlayPages === "selected" ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]" : "border-white/10 text-white/50"}`}>Selected pages</button>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-sm font-semibold text-white/70">Choose pages for the stamp</label>
+                    <p className="mt-1 text-xs text-white/35">Click any page to include or remove the stamp.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={selectAllStampPages} className="cursor-pointer rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold hover:border-[#ccff00]/40 hover:text-[#ccff00]">All</button>
+                    <button type="button" onClick={clearStampPages} className="cursor-pointer rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold hover:border-white/25">Clear</button>
+                  </div>
                 </div>
+
+                <div className="mb-4 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs">
+                  <span className="text-white/45">{stampSelectedPages.length} of {stampTotalPages} pages selected</span>
+                  <span className="text-[#ccff00]">{stampSelectedPages.length === stampTotalPages && stampTotalPages > 0 ? "Stamp on every page" : "Custom selection"}</span>
+                </div>
+
+                <div className="grid max-h-[560px] grid-cols-2 gap-3 overflow-y-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
+                  {Array.from({ length: stampTotalPages }, (_, index) => index + 1).map((pageNumber) => {
+                    const selected = stampSelectedPages.includes(pageNumber);
+                    return (
+                      <button
+                        key={pageNumber}
+                        type="button"
+                        onClick={() => toggleStampPage(pageNumber)}
+                        className={`group relative cursor-pointer overflow-hidden rounded-2xl border p-2 text-left transition ${selected ? "border-[#ccff00] bg-[#ccff00]/10" : "border-white/10 bg-white/[0.02] hover:border-white/25"}`}
+                      >
+                        <div className="relative flex min-h-52 items-center justify-center overflow-hidden rounded-xl bg-[#171c22]">
+                          {stampThumbnails[pageNumber] ? (
+                            <img src={stampThumbnails[pageNumber]} alt={`Page ${pageNumber} preview`} className="h-52 w-full object-contain" />
+                          ) : stampLoading[pageNumber] ? (
+                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-[#ccff00]" />
+                          ) : stampErrors[pageNumber] ? (
+                            <span className="px-4 text-center text-xs text-red-300/70">Preview unavailable</span>
+                          ) : (
+                            <span className="text-xs text-white/25">Preparing preview...</span>
+                          )}
+                          <span className="absolute left-2 top-2 rounded-lg bg-[#ccff00] px-2 py-1 text-xs font-black text-black">Page {pageNumber}</span>
+                          {selected && <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[#ccff00] text-sm font-black text-black">✓</span>}
+                        </div>
+                        <div className={`px-1 py-2 text-xs font-semibold ${selected ? "text-[#ccff00]" : "text-white/45"}`}>{selected ? "Stamp this page" : "Not selected"}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
                 {overlayPages === "selected" && (
                   <input value={overlayPageRange} onChange={(event) => setOverlayPageRange(event.target.value)} placeholder="Example: 1,3,5 or 2-6" className="mt-3 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60" />
                 )}

@@ -51,6 +51,7 @@ export default function Home() {
   const [mergeReview, setMergeReview] = useState(false);
   const [pdfThumbnails, setPdfThumbnails] = useState<Record<string, string>>({});
   const [thumbnailLoading, setThumbnailLoading] = useState<Record<string, boolean>>({});
+  const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, boolean>>({});
   const [overlayFile, setOverlayFile] = useState<File | null>(null);
   const [overlayType, setOverlayType] = useState<"stamp" | "signature">("stamp");
   const [overlayPosition, setOverlayPosition] = useState("bottom-right");
@@ -68,6 +69,7 @@ export default function Home() {
     if (tool !== "merge" || !mergeReview || files.length === 0) {
       setPdfThumbnails({});
       setThumbnailLoading({});
+      setThumbnailErrors({});
       return;
     }
 
@@ -87,13 +89,14 @@ export default function Home() {
         try {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-          // Render the first page locally. The installed PDF.js runtime supports
-          // disableWorker, while its TypeScript definitions may not expose it.
-          // Cast only this option so thumbnail rendering works reliably in Vercel/browser builds.
+          // PDF.js 5.x requires a worker for reliable browser rendering.
+          // Use the exact installed version from a public CDN.
+          pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://unpkg.com/pdfjs-dist@5.4.54/build/pdf.worker.min.mjs";
+
           const pdf = await pdfjsLib.getDocument({
             data: await file.arrayBuffer(),
-            disableWorker: true,
-          } as any).promise;
+          }).promise;
 
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.55 });
@@ -118,7 +121,9 @@ export default function Home() {
 
           await pdf.destroy();
         } catch {
-          // Keep the PDF placeholder if a thumbnail cannot be rendered.
+          if (!cancelled) {
+            setThumbnailErrors((current) => ({ ...current, [key]: true }));
+          }
         } finally {
           if (!cancelled) {
             setThumbnailLoading((current) => ({ ...current, [key]: false }));
@@ -862,7 +867,12 @@ export default function Home() {
                       {thumbnailLoading[getFileKey(file)] ? (
                         <>
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-[#ccff00]" />
-                          <span className="mt-3 text-[9px] uppercase tracking-widest text-white/30">Preview</span>
+                          <span className="mt-3 text-[9px] uppercase tracking-widest text-white/30">Loading</span>
+                        </>
+                      ) : thumbnailErrors[getFileKey(file)] ? (
+                        <>
+                          <span className="text-2xl font-black text-[#ccff00]">PDF</span>
+                          <span className="mt-2 text-[9px] uppercase tracking-widest text-red-300/70">Preview unavailable</span>
                         </>
                       ) : (
                         <>

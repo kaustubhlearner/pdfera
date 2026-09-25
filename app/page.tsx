@@ -1255,7 +1255,7 @@ export default function Home() {
           <button
             key={item.id}
             onClick={() => selectTool(item.id)}
-            className={`group rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
+            className={`group cursor-pointer rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
               tool === item.id ? "border-[#ccff00]/60 bg-[#ccff00]/8" : "border-white/10 bg-white/[0.03]"
             }`}
           >

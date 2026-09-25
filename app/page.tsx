@@ -1228,7 +1228,27 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen">
+    <>
+      <style>{`
+        button:not(:disabled),
+        [role="button"] {
+          cursor: pointer;
+        }
+
+        button:disabled {
+          cursor: not-allowed;
+        }
+
+        button:focus-visible,
+        [role="button"]:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        select:focus-visible {
+          outline: 2px solid #ccff00;
+          outline-offset: 2px;
+        }
+      `}</style>
+      <main className="min-h-screen">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="text-2xl font-black tracking-tight">
           PDF<span className="text-[#ccff00]">era</span>
@@ -1560,6 +1580,7 @@ export default function Home() {
         PDFera • Built as a free-first PDF toolkit • Merge limit: 100 PDFs
       </footer>
     </main>
+    </>
   );
 }
 

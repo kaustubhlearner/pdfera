@@ -824,7 +824,7 @@ export default function Home() {
               }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
-              className={`relative overflow-hidden rounded-3xl border border-dashed px-6 py-9 text-center transition ${dragging
+              className={`relative cursor-pointer overflow-hidden rounded-3xl border border-dashed px-6 py-9 text-center transition duration-200 hover:-translate-y-0.5 ${dragging
                 ? "border-[#ccff00] bg-[#ccff00]/10 shadow-[0_0_0_4px_rgba(204,255,0,0.06)]"
                 : "border-white/15 bg-black/30 hover:border-[#ccff00]/40"}`}
             >
@@ -835,7 +835,7 @@ export default function Home() {
               </div>
               <h3 className="mt-5 text-lg font-bold">{dragging ? "Drop your files here" : "Upload your files"}</h3>
               <p className="mt-2 text-sm text-white/45">Drag & drop here, or choose files from your device</p>
-              <button type="button" onClick={() => inputRef.current?.click()} className="mt-6 rounded-xl bg-[#ccff00] px-6 py-3 text-sm font-black text-black transition hover:brightness-95">
+              <button type="button" onClick={() => inputRef.current?.click()} className="mt-6 cursor-pointer rounded-xl bg-[#ccff00] px-6 py-3 text-sm font-black text-black transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0">
                 Choose {tool === "jpg" ? "Images" : "PDF Files"}
               </button>
               <div className="mx-auto mt-5 max-w-xl border-t border-white/10 pt-4 text-xs text-white/35">
@@ -855,7 +855,7 @@ export default function Home() {
                     <p className="font-bold">Selected files</p>
                     <p className="mt-1 text-xs text-white/35">{files.length} file{files.length === 1 ? "" : "s"} • {formatFileSize(files.reduce((sum, file) => sum + file.size, 0))}</p>
                   </div>
-                  <button type="button" onClick={() => setFiles([])} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/50 transition hover:border-white/20 hover:text-white">Clear all</button>
+                  <button type="button" onClick={() => setFiles([])} className="cursor-pointer rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/50 transition hover:border-white/20 hover:bg-white/5 hover:text-white">Clear all</button>
                 </div>
 
                 <div className="max-h-80 overflow-y-auto p-3">
@@ -867,7 +867,7 @@ export default function Home() {
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => handleFileDrop(index)}
                       onDragEnd={() => setDragIndex(null)}
-                      className={`group flex items-center gap-3 rounded-2xl border px-3 py-3 transition ${dragIndex === index ? "border-[#ccff00]/50 bg-[#ccff00]/5" : "border-transparent bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.04]"}`}
+                      className={`group flex items-center gap-3 rounded-2xl border px-3 py-3 transition ${tool === "merge" ? "cursor-grab active:cursor-grabbing" : ""} ${dragIndex === index ? "border-[#ccff00]/50 bg-[#ccff00]/5" : "border-transparent bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.04]"}`}
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-black text-[#ccff00]">
                         {tool === "jpg" ? "IMG" : "PDF"}
@@ -877,7 +877,7 @@ export default function Home() {
                         <p className="mt-1 text-xs text-white/35">{formatFileSize(file.size)} {tool === "merge" && "• Drag to reorder"}</p>
                       </div>
                       <span className="hidden rounded-full border border-[#ccff00]/15 bg-[#ccff00]/5 px-2 py-1 text-[10px] font-bold text-[#ccff00] sm:inline-flex">READY</span>
-                      <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`} className="rounded-lg px-2 py-2 text-xs text-white/30 transition hover:bg-white/5 hover:text-white">Remove</button>
+                      <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`} className="cursor-pointer rounded-lg px-2 py-2 text-xs text-white/30 transition hover:bg-white/5 hover:text-white">Remove</button>
                     </div>
                   ))}
                 </div>

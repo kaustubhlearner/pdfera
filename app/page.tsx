@@ -65,7 +65,7 @@ export default function Home() {
   const overlayInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (tool !== "merge" || files.length === 0) {
+    if (tool !== "merge" || !mergeReview || files.length === 0) {
       setPdfThumbnails({});
       setThumbnailLoading({});
       return;
@@ -86,9 +86,26 @@ export default function Home() {
 
         try {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-          const pdf = await pdfjsLib.getDocument({
-            data: await file.arrayBuffer(),
-          }).promise;
+
+          // PDF.js needs a worker in the browser. Configure the exact installed
+          // version so every PDF can render its first-page preview reliably.
+          pdfjsLib.GlobalWorkerOptions.workerSrc =
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.54/pdf.worker.min.mjs";
+
+          let pdf;
+          try {
+            pdf = await pdfjsLib.getDocument({
+              data: await file.arrayBuffer(),
+            }).promise;
+          } catch {
+            // Fallback for environments where the worker cannot be loaded.
+            const options = {
+              data: await file.arrayBuffer(),
+              disableWorker: true,
+            } as Parameters<typeof pdfjsLib.getDocument>[0] & { disableWorker?: boolean };
+
+            pdf = await pdfjsLib.getDocument(options).promise;
+          }
 
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.55 });
@@ -127,7 +144,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [files, tool]);
+  }, [files, tool, mergeReview]);
 
   async function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);

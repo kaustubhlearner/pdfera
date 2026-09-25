@@ -251,7 +251,7 @@ export default function Home() {
       setMessage(
         isImageTool
           ? "No valid JPG/PNG files found. Images must be valid and under 15 MB each."
-          : "No valid PDF files found. PDFs must be valid and under 50 MB each."
+          : "No valid PDF files found. PDFs must be valid and under 100 MB each."
       );
       return;
     }
@@ -976,10 +976,10 @@ export default function Home() {
 
   if (tool === "edit" && editorReview) {
     return (
-      <main className="min-h-screen">
+      <main className="min-h-screen overflow-x-hidden">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-          <div className="text-2xl font-black tracking-tight">PDF<span className="text-[#ccff00]">era</span></div>
-          <span className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/50">PDF Editor</span>
+          <div className="shrink-0 text-xl font-black tracking-tight sm:text-2xl">PDF<span className="text-[#ccff00]">era</span></div>
+          <span className="hidden rounded-full border border-white/10 px-4 py-2 text-xs text-white/50 sm:inline-flex">PDF Editor</span>
         </nav>
 
         <section className="mx-auto max-w-7xl px-6 pb-24 pt-8">
@@ -1089,12 +1089,12 @@ export default function Home() {
 
   if (tool === "merge" && mergeReview) {
     return (
-      <main className="min-h-screen">
+      <main className="min-h-screen overflow-x-hidden">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-          <div className="text-2xl font-black tracking-tight">
+          <div className="shrink-0 text-xl font-black tracking-tight sm:text-2xl">
             PDF<span className="text-[#ccff00]">era</span>
           </div>
-          <span className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/50">
+          <span className="hidden rounded-full border border-white/10 px-4 py-2 text-xs text-white/50 sm:inline-flex">
             Merge PDF
           </span>
         </nav>
@@ -1247,50 +1247,67 @@ export default function Home() {
           outline: 2px solid #ccff00;
           outline-offset: 2px;
         }
+
+        @media (max-width: 640px) {
+          input,
+          textarea,
+          select,
+          button {
+            font-size: 16px;
+          }
+
+          input[type="range"] {
+            font-size: initial;
+          }
+
+          [draggable="true"] {
+            touch-action: none;
+          }
+        }
       `}</style>
-      <main className="min-h-screen">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <div className="text-2xl font-black tracking-tight">
+      <main className="min-h-screen overflow-x-hidden">
+      <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-6">
+        <div className="shrink-0 text-xl font-black tracking-tight sm:text-2xl">
           PDF<span className="text-[#ccff00]">era</span>
         </div>
-        <span className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/50">
+        <span className="hidden rounded-full border border-white/10 px-4 py-2 text-xs text-white/50 sm:inline-flex">
           Free • Browser based
         </span>
       </nav>
 
-      <section className="mx-auto max-w-6xl px-6 pb-14 pt-10 text-center">
-        <p className="mb-5 text-sm font-bold uppercase tracking-[0.25em] text-[#ccff00]">PDF tools, made simple</p>
-        <h1 className="mx-auto max-w-4xl text-5xl font-black tracking-tight sm:text-7xl">
+      <section className="mx-auto max-w-6xl px-4 pb-10 pt-7 text-center sm:px-6 sm:pb-14 sm:pt-10">
+        <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.18em] text-[#ccff00] sm:mb-5 sm:text-sm sm:tracking-[0.25em]">PDF tools, made simple</p>
+        <h1 className="mx-auto max-w-4xl text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
           Work with PDFs.
           <br />
           <span className="text-white/35">No complicated setup.</span>
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-white/55">
+        <p className="mx-auto mt-5 max-w-2xl text-sm leading-6 text-white/55 sm:mt-6 sm:text-base sm:leading-7">
           Merge, split, convert, rotate and organize files directly in your browser.
         </p>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-4 px-6 pb-10 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mx-auto grid max-w-6xl gap-3 px-4 pb-8 sm:grid-cols-2 sm:gap-4 sm:px-6 sm:pb-10 lg:grid-cols-4">
         {tools.map((item) => (
           <button
             key={item.id}
             onClick={() => selectTool(item.id)}
-            className={`group cursor-pointer rounded-3xl border p-6 text-left transition hover:-translate-y-1 ${
+            className={`group cursor-pointer rounded-2xl border p-4 text-left transition hover:-translate-y-1 sm:rounded-3xl sm:p-6 ${
               tool === item.id ? "border-[#ccff00]/60 bg-[#ccff00]/8" : "border-white/10 bg-white/[0.03]"
             }`}
           >
-            <div className="mb-7 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/85 transition group-hover:border-[#ccff00]/30 group-hover:bg-[#ccff00]/10 group-hover:text-[#ccff00]"><ToolIcon type={item.icon} /></div>
-            <h2 className="text-lg font-bold">{item.title}</h2>
-            <p className="mt-2 text-sm text-white/45">{item.text}</p>
+            <div className="mb-5 inline-flex h-10 w-10 sm:mb-7 sm:h-11 sm:w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/85 transition group-hover:border-[#ccff00]/30 group-hover:bg-[#ccff00]/10 group-hover:text-[#ccff00]"><ToolIcon type={item.icon} /></div>
+            <h2 className="text-base font-bold sm:text-lg">{item.title}</h2>
+            <p className="mt-2 text-xs leading-5 text-white/45 sm:text-sm">{item.text}</p>
           </button>
         ))}
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
-        <div className="rounded-[2rem] border border-white/10 bg-white/[0.025] p-6 sm:p-10">
-          <div className="mb-7 flex items-center justify-between gap-4">
+      <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 sm:pb-24">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-4 sm:rounded-[2rem] sm:p-10">
+          <div className="mb-6 flex flex-col items-start justify-between gap-3 sm:mb-7 sm:flex-row sm:items-center sm:gap-4">
             <div>
-              <h2 className="text-2xl font-bold">
+              <h2 className="text-xl font-bold sm:text-2xl">
                 {tool === "merge" ? "Merge your PDFs" :
                  tool === "split" ? "Split your PDF" :
                  tool === "jpg" ? "Convert images to PDF" :
@@ -1331,7 +1348,7 @@ export default function Home() {
             }}
           />
 
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             <div
               onDragOver={(event) => {
                 event.preventDefault();
@@ -1339,7 +1356,7 @@ export default function Home() {
               }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
-              className={`relative cursor-pointer overflow-hidden rounded-3xl border border-dashed px-6 py-9 text-center transition duration-200 hover:-translate-y-0.5 ${dragging
+              className={`relative cursor-pointer overflow-hidden rounded-2xl border border-dashed px-4 py-7 text-center transition duration-200 hover:-translate-y-0.5 sm:rounded-3xl sm:px-6 sm:py-9 ${dragging
                 ? "border-[#ccff00] bg-[#ccff00]/10 shadow-[0_0_0_4px_rgba(204,255,0,0.06)]"
                 : "border-white/15 bg-black/30 hover:border-[#ccff00]/40"}`}
             >
@@ -1348,13 +1365,13 @@ export default function Home() {
                   <path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
                 </svg>
               </div>
-              <h3 className="mt-5 text-lg font-bold">{dragging ? "Drop your files here" : "Upload your files"}</h3>
-              <p className="mt-2 text-sm text-white/45">Drag & drop here, or choose files from your device</p>
-              <button type="button" onClick={() => inputRef.current?.click()} className="mt-6 cursor-pointer rounded-xl bg-[#ccff00] px-6 py-3 text-sm font-black text-black transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0">
+              <h3 className="mt-4 text-base font-bold sm:mt-5 sm:text-lg">{dragging ? "Drop your files here" : "Upload your files"}</h3>
+              <p className="mt-2 text-xs leading-5 text-white/45 sm:text-sm">Drag & drop here, or choose files from your device</p>
+              <button type="button" onClick={() => inputRef.current?.click()} className="mt-5 w-full cursor-pointer rounded-xl bg-[#ccff00] px-5 py-3 text-sm font-black text-black sm:mt-6 sm:w-auto sm:px-6 transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0">
                 Choose {tool === "jpg" ? "Images" : "PDF Files"}
               </button>
               <div className="mx-auto mt-5 max-w-xl border-t border-white/10 pt-4 text-xs text-white/35">
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
                   <span>{tool === "jpg" ? "JPG / PNG" : "PDF only"}</span><span>•</span>
                   <span>Max {tool === "jpg" ? "15 MB per image" : "50 MB per PDF"}</span><span>•</span>
                   <span>Private & processed in your browser</span>
@@ -1364,8 +1381,8 @@ export default function Home() {
             </div>
 
             {files.length > 0 && (
-              <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/25">
-                <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/25 sm:rounded-3xl">
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
                   <div>
                     <p className="font-bold">Selected files</p>
                     <p className="mt-1 text-xs text-white/35">{files.length} file{files.length === 1 ? "" : "s"} • {formatFileSize(files.reduce((sum, file) => sum + file.size, 0))}</p>
@@ -1373,7 +1390,7 @@ export default function Home() {
                   <button type="button" onClick={() => setFiles([])} className="cursor-pointer rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/50 transition hover:border-white/20 hover:bg-white/5 hover:text-white">Clear all</button>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto p-3">
+                <div className="max-h-80 overflow-y-auto p-2 sm:p-3">
                   {files.map((file, index) => (
                     <div
                       key={file.name + index}
@@ -1382,7 +1399,7 @@ export default function Home() {
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => handleFileDrop(index)}
                       onDragEnd={() => setDragIndex(null)}
-                      className={`group flex items-center gap-3 rounded-2xl border px-3 py-3 transition ${tool === "merge" ? "cursor-grab active:cursor-grabbing" : ""} ${dragIndex === index ? "border-[#ccff00]/50 bg-[#ccff00]/5" : "border-transparent bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.04]"}`}
+                      className={`group flex min-w-0 items-center gap-2 rounded-2xl border px-2.5 py-3 transition sm:gap-3 sm:px-3 ${tool === "merge" ? "cursor-grab active:cursor-grabbing" : ""} ${dragIndex === index ? "border-[#ccff00]/50 bg-[#ccff00]/5" : "border-transparent bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.04]"}`}
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-xs font-black text-[#ccff00]">
                         {tool === "jpg" ? "IMG" : "PDF"}
@@ -1392,7 +1409,7 @@ export default function Home() {
                         <p className="mt-1 text-xs text-white/35">{formatFileSize(file.size)} {tool === "merge" && "• Drag to reorder"}</p>
                       </div>
                       <span className="hidden rounded-full border border-[#ccff00]/15 bg-[#ccff00]/5 px-2 py-1 text-[10px] font-bold text-[#ccff00] sm:inline-flex">READY</span>
-                      <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`} className="cursor-pointer rounded-lg px-2 py-2 text-xs text-white/30 transition hover:bg-white/5 hover:text-white">Remove</button>
+                      <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`} className="shrink-0 cursor-pointer rounded-lg px-2 py-2 text-xs text-white/30 transition hover:bg-white/5 hover:text-white">Remove</button>
                     </div>
                   ))}
                 </div>
@@ -1495,7 +1512,7 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white/70">Position</label>
                   <select value={overlayPosition} onChange={(event) => setOverlayPosition(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60">
@@ -1512,7 +1529,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <div className="mb-2 flex justify-between text-sm"><label className="font-semibold text-white/70">Opacity</label><span className="text-white/40">{overlayOpacity}%</span></div>
                   <input type="range" min="10" max="100" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} className="w-full accent-[#ccff00]" />
@@ -1576,7 +1593,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10 px-6 py-8 text-center text-xs text-white/30">
+      <footer className="border-t border-white/10 px-4 py-7 text-center text-xs text-white/30 sm:px-6 sm:py-8 text-center text-xs text-white/30">
         PDFera • Built as a free-first PDF toolkit • Merge limit: 100 PDFs
       </footer>
     </main>

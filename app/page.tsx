@@ -1,6 +1,6 @@
 "use client";
 
-import { DragEvent, useRef, useState } from "react";
+import { DragEvent, useEffect, useRef, useState } from "react";
 import { PDFDocument, degrees, rgb } from "pdf-lib";
 
 type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp";
@@ -49,6 +49,8 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [mergeReview, setMergeReview] = useState(false);
+  const [pdfThumbnails, setPdfThumbnails] = useState<Record<string, string>>({});
+  const [thumbnailLoading, setThumbnailLoading] = useState<Record<string, boolean>>({});
   const [overlayFile, setOverlayFile] = useState<File | null>(null);
   const [overlayType, setOverlayType] = useState<"stamp" | "signature">("stamp");
   const [overlayPosition, setOverlayPosition] = useState("bottom-right");
@@ -61,6 +63,72 @@ export default function Home() {
   const [stampColor, setStampColor] = useState("#ccff00");
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (tool !== "merge" || files.length === 0) {
+      setPdfThumbnails({});
+      setThumbnailLoading({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function createThumbnails() {
+      const next: Record<string, string> = {};
+      const loading: Record<string, boolean> = {};
+
+      for (const file of files) {
+        const key = getFileKey(file);
+        if (pdfThumbnails[key]) continue;
+
+        loading[key] = true;
+        if (!cancelled) setThumbnailLoading((current) => ({ ...current, [key]: true }));
+
+        try {
+          const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+          const pdf = await pdfjsLib.getDocument({
+            data: await file.arrayBuffer(),
+            disableWorker: true,
+          }).promise;
+
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 0.55 });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+
+          if (!context) continue;
+
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+
+          await page.render({
+            canvas,
+            canvasContext: context,
+            viewport,
+          }).promise;
+
+          if (!cancelled) {
+            next[key] = canvas.toDataURL("image/jpeg", 0.78);
+            setPdfThumbnails((current) => ({ ...current, [key]: next[key] }));
+          }
+
+          await pdf.destroy();
+        } catch {
+          // Keep the PDF placeholder if a thumbnail cannot be rendered.
+        } finally {
+          if (!cancelled) {
+            setThumbnailLoading((current) => ({ ...current, [key]: false }));
+          }
+        }
+      }
+    }
+
+    void createThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [files, tool]);
 
   async function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);
@@ -778,17 +846,38 @@ export default function Home() {
                     : "border-white/10"
                 }`}
               >
-                <div className="relative flex h-44 items-center justify-center rounded-xl bg-white/[0.035]">
-                  <div className="flex h-20 w-16 flex-col items-center justify-center rounded-lg border border-white/10 bg-[#181d24] shadow-xl">
-                    <span className="text-2xl font-black text-[#ccff00]">PDF</span>
-                    <span className="mt-1 text-[9px] uppercase tracking-widest text-white/30">Document</span>
-                  </div>
-                  <span className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg bg-[#ccff00] text-sm font-black text-black">
+                <div className="relative flex h-44 items-center justify-center overflow-hidden rounded-xl bg-white/[0.035]">
+                  {pdfThumbnails[getFileKey(file)] ? (
+                    <img
+                      src={pdfThumbnails[getFileKey(file)]}
+                      alt={`First page preview of ${file.name}`}
+                      className="h-full w-full object-contain p-2"
+                    />
+                  ) : (
+                    <div className="flex h-24 w-20 flex-col items-center justify-center rounded-lg border border-white/10 bg-[#181d24] shadow-xl">
+                      {thumbnailLoading[getFileKey(file)] ? (
+                        <>
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-[#ccff00]" />
+                          <span className="mt-3 text-[9px] uppercase tracking-widest text-white/30">Preview</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-black text-[#ccff00]">PDF</span>
+                          <span className="mt-1 text-[9px] uppercase tracking-widest text-white/30">Preview</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <span className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg bg-[#ccff00] text-sm font-black text-black shadow-lg">
                     {index + 1}
                   </span>
+                  <span className="absolute bottom-3 left-3 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white/70 backdrop-blur">
+                    First page
+                  </span>
                   <button
+                    type="button"
                     onClick={() => removeFile(index)}
-                    className="absolute right-3 top-3 rounded-lg bg-black/60 px-2 py-1 text-xs text-white/50 opacity-0 transition group-hover:opacity-100 hover:text-white"
+                    className="absolute right-3 top-3 cursor-pointer rounded-lg bg-black/70 px-2 py-1 text-xs text-white/60 opacity-0 backdrop-blur transition group-hover:opacity-100 hover:text-white"
                   >
                     Remove
                   </button>
@@ -1155,6 +1244,10 @@ export default function Home() {
       </footer>
     </main>
   );
+}
+
+function getFileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
 function parsePageNumbers(value: string, totalPages: number) {

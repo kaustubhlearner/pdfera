@@ -10,6 +10,7 @@ const MAX_PDF_SIZE = 50 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 250 * 1024 * 1024;
 const MAX_PDF_PAGES = 300;
+const MAX_TOTAL_PAGES = 1000;
 
 const tools = [
   { id: "merge" as Tool, icon: "merge", title: "Merge PDF", text: "Combine up to 100 PDFs into one file." },
@@ -40,6 +41,8 @@ export default function Home() {
   const [tool, setTool] = useState<Tool>("merge");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [message, setMessage] = useState("");
   const [pageRange, setPageRange] = useState("1");
   const [pageOrder, setPageOrder] = useState("");
@@ -120,10 +123,20 @@ export default function Home() {
       return;
     }
 
-    setFiles((current) => [...current, ...accepted]);
+    const existingKeys = new Set(files.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
+    const uniqueAccepted = accepted.filter(
+      (file) => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`)
+    );
+
+    if (uniqueAccepted.length === 0) {
+      setMessage("These files are already selected.");
+      return;
+    }
+
+    setFiles((current) => [...current, ...uniqueAccepted]);
     setMessage(
-      rejected > 0 || accepted.length < valid.length
-        ? `${accepted.length} file(s) added. Some files were skipped for safety or size limits.`
+      rejected > 0 || uniqueAccepted.length < valid.length
+        ? `${uniqueAccepted.length} file(s) added. Some files were skipped or already selected.`
         : ""
     );
   }
@@ -170,21 +183,38 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(0);
+    setProgressLabel("Preparing PDFs...");
     try {
       const merged = await PDFDocument.create();
+      let totalPages = 0;
 
-      for (const file of files) {
+      for (let index = 0; index < files.length; index++) {
+        const file = files[index];
+        setProgressLabel(`Reading ${index + 1} of ${files.length}: ${file.name}`);
         const source = await PDFDocument.load(await file.arrayBuffer());
+        totalPages += source.getPageCount();
+
+        if (totalPages > MAX_TOTAL_PAGES) {
+          setMessage(`This merge contains more than ${MAX_TOTAL_PAGES} pages. Please merge fewer pages at once.`);
+          return;
+        }
+
         const pages = await merged.copyPages(source, source.getPageIndices());
         pages.forEach((page) => merged.addPage(page));
+        setProgress(Math.round(((index + 1) / files.length) * 90));
       }
 
-      download(await merged.save(), "pdfera-merged.pdf");
-      setMessage(`Merged ${files.length} PDFs successfully.`);
+      setProgressLabel("Creating final PDF...");
+      const bytes = await merged.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-merged.pdf");
+      setMessage(`Merged ${files.length} PDFs • ${totalPages} pages successfully.`);
     } catch {
       setMessage("Could not process one of the PDFs.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -195,6 +225,8 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(10);
+    setProgressLabel("Loading PDF...");
     try {
       const source = await PDFDocument.load(await files[0].arrayBuffer());
       const totalPages = source.getPageCount();
@@ -233,14 +265,20 @@ export default function Home() {
       }
 
       const output = await PDFDocument.create();
+      setProgress(70);
+      setProgressLabel("Building selected pages...");
       const copied = await output.copyPages(source, pageNumbers.map((page) => page - 1));
       copied.forEach((page) => output.addPage(page));
-      download(await output.save(), "pdfera-split.pdf");
+      setProgressLabel("Creating download...");
+      const bytes = await output.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-split.pdf");
       setMessage("Selected pages downloaded successfully.");
     } catch {
       setMessage("Could not split the PDF.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -251,10 +289,14 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(0);
+    setProgressLabel("Preparing images...");
     try {
       const pdf = await PDFDocument.create();
 
-      for (const file of files) {
+      for (let index = 0; index < files.length; index++) {
+        const file = files[index];
+        setProgressLabel(`Adding image ${index + 1} of ${files.length}`);
         if (file.size > MAX_IMAGE_SIZE) {
           setMessage("Each image must be under 15 MB.");
           return;
@@ -266,14 +308,19 @@ export default function Home() {
 
         const page = pdf.addPage([image.width, image.height]);
         page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+        setProgress(Math.round(((index + 1) / files.length) * 90));
       }
 
-      download(await pdf.save(), "pdfera-images.pdf");
+      setProgressLabel("Creating PDF...");
+      const bytes = await pdf.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-images.pdf");
       setMessage("PDF created from images successfully.");
     } catch {
       setMessage("Could not convert the selected images.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -284,6 +331,8 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(0);
+    setProgressLabel("Loading PDF renderer...");
     try {
       const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
       const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
@@ -293,6 +342,7 @@ export default function Home() {
       }
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+        setProgressLabel(`Converting page ${pageNumber} of ${pdf.numPages}`);
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = document.createElement("canvas");
@@ -316,7 +366,8 @@ export default function Home() {
         anchor.href = url;
         anchor.download = `pdfera-page-${pageNumber}.jpg`;
         anchor.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setProgress(Math.round((pageNumber / pdf.numPages) * 100));
       }
 
       setMessage(`Converted ${pdf.numPages} page(s) to JPG.`);
@@ -324,6 +375,7 @@ export default function Home() {
       setMessage("Could not convert the PDF to JPG.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -334,19 +386,27 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(15);
+    setProgressLabel("Loading PDF...");
     try {
       const pdf = await PDFDocument.load(await files[0].arrayBuffer());
 
-      pdf.getPages().forEach((page) => {
+      const pages = pdf.getPages();
+      pages.forEach((page, index) => {
         page.setRotation(degrees((page.getRotation().angle + 90) % 360));
+        if (index % 10 === 0) setProgress(15 + Math.round((index / pages.length) * 65));
       });
 
-      download(await pdf.save(), "pdfera-rotated.pdf");
+      setProgressLabel("Creating rotated PDF...");
+      const bytes = await pdf.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-rotated.pdf");
       setMessage("PDF rotated successfully.");
     } catch {
       setMessage("Could not rotate the PDF.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -357,6 +417,8 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(10);
+    setProgressLabel("Loading PDF...");
     try {
       const source = await PDFDocument.load(await files[0].arrayBuffer());
       const totalPages = source.getPageCount();
@@ -379,15 +441,19 @@ export default function Home() {
         if (!deleteNumbers.includes(page)) keepIndexes.push(page - 1);
       }
 
+      setProgressLabel("Rebuilding PDF...");
       const copied = await output.copyPages(source, keepIndexes);
       copied.forEach((page) => output.addPage(page));
 
-      download(await output.save(), "pdfera-pages-deleted.pdf");
+      const bytes = await output.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-pages-deleted.pdf");
       setMessage("Selected pages deleted successfully.");
     } catch {
       setMessage("Could not delete pages.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -398,6 +464,8 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(10);
+    setProgressLabel("Loading PDF...");
     try {
       const source = await PDFDocument.load(await files[0].arrayBuffer());
       const totalPages = source.getPageCount();
@@ -415,15 +483,19 @@ export default function Home() {
       }
 
       const output = await PDFDocument.create();
+      setProgressLabel("Reordering pages...");
       const copied = await output.copyPages(source, order.map((page) => page - 1));
       copied.forEach((page) => output.addPage(page));
 
-      download(await output.save(), "pdfera-reordered.pdf");
+      const bytes = await output.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-reordered.pdf");
       setMessage("PDF pages reordered successfully.");
     } catch {
       setMessage("Could not reorder the PDF.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -444,6 +516,8 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(10);
+    setProgressLabel("Loading PDF...");
     try {
       const pdf = await PDFDocument.load(await files[0].arrayBuffer());
       const totalPages = pdf.getPageCount();
@@ -476,7 +550,9 @@ export default function Home() {
       const opacity = overlayOpacity / 100;
       const rotation = degrees(overlayRotation);
 
-      for (const pageNumber of selectedPages) {
+      for (let index = 0; index < selectedPages.length; index++) {
+        const pageNumber = selectedPages[index];
+        setProgressLabel(`Applying overlay ${index + 1} of ${selectedPages.length}`);
         const page = pdf.getPage(pageNumber - 1);
         const pageWidth = page.getWidth();
         const pageHeight = page.getHeight();
@@ -528,10 +604,15 @@ export default function Home() {
             color: hexToRgb(stampColor),
           });
         }
+
+        setProgress(10 + Math.round(((index + 1) / selectedPages.length) * 80));
       }
 
+      setProgressLabel("Creating final PDF...");
+      const bytes = await pdf.save({ useObjectStreams: true });
+      setProgress(100);
       download(
-        await pdf.save(),
+        bytes,
         overlayType === "stamp" ? "pdfera-stamped.pdf" : "pdfera-signed.pdf"
       );
 
@@ -544,6 +625,7 @@ export default function Home() {
       setMessage("Could not add the stamp or signature.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -554,19 +636,25 @@ export default function Home() {
     }
 
     setBusy(true);
+    setProgress(10);
+    setProgressLabel("Analyzing PDF structure...");
     try {
       const source = await PDFDocument.load(await files[0].arrayBuffer());
       const before = files[0].size;
+      setProgress(45);
+      setProgressLabel("Optimizing PDF...");
       const bytes = await source.save({ useObjectStreams: true });
       download(bytes, "pdfera-compressed.pdf");
 
       const after = bytes.byteLength;
+      setProgress(100);
       const percent = before > 0 ? Math.max(0, Math.round((1 - after / before) * 100)) : 0;
       setMessage(`Optimized PDF downloaded. Size change: ${percent}% smaller.`);
     } catch {
       setMessage("Could not optimize the PDF.");
     } finally {
       setBusy(false);
+      setProgressLabel("");
     }
   }
 
@@ -585,6 +673,8 @@ export default function Home() {
   function selectTool(nextTool: Tool) {
     setTool(nextTool);
     setFiles([]);
+    setProgress(0);
+    setProgressLabel("");
     setMessage("");
     setPageRange("1");
     setPageOrder("");
@@ -1025,6 +1115,21 @@ export default function Home() {
             </div>
           )}
 
+          {busy && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4">
+              <div className="mb-2 flex items-center justify-between gap-4 text-xs">
+                <span className="truncate text-white/55">{progressLabel || "Processing..."}</span>
+                <span className="font-bold text-[#ccff00]">{progress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#ccff00] transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           <button
             onClick={tool === "merge" ? openMergeReview : process}
             disabled={busy}
@@ -1086,8 +1191,10 @@ function download(bytes: Uint8Array, filename: string) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 

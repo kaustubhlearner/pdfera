@@ -87,25 +87,13 @@ export default function Home() {
         try {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-          // PDF.js needs a worker in the browser. Configure the exact installed
-          // version so every PDF can render its first-page preview reliably.
-          pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.54/pdf.worker.min.mjs";
-
-          let pdf;
-          try {
-            pdf = await pdfjsLib.getDocument({
-              data: await file.arrayBuffer(),
-            }).promise;
-          } catch {
-            // Fallback for environments where the worker cannot be loaded.
-            const options = {
-              data: await file.arrayBuffer(),
-              disableWorker: true,
-            } as Parameters<typeof pdfjsLib.getDocument>[0] & { disableWorker?: boolean };
-
-            pdf = await pdfjsLib.getDocument(options).promise;
-          }
+          // Render the first page locally. The installed PDF.js runtime supports
+          // disableWorker, while its TypeScript definitions may not expose it.
+          // Cast only this option so thumbnail rendering works reliably in Vercel/browser builds.
+          const pdf = await pdfjsLib.getDocument({
+            data: await file.arrayBuffer(),
+            disableWorker: true,
+          } as any).promise;
 
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.55 });

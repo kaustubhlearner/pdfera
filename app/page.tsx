@@ -289,7 +289,8 @@ export default function Home() {
   }, [files, tool]);
 
   useEffect(() => {
-    if (!overlayFile) {
+    const stampFile = overlayFile;
+    if (!stampFile) {
       setStampAssetPreview("");
       return;
     }
@@ -298,18 +299,18 @@ export default function Home() {
     async function previewStampAsset() {
       setStampAssetLoading(true);
       try {
-        if (overlayFile.type === "image/png" || overlayFile.type === "image/jpeg" || overlayFile.type === "image/svg+xml") {
-          if (!cancelled) setStampAssetPreview(URL.createObjectURL(overlayFile));
+        if (stampFile.type === "image/png" || stampFile.type === "image/jpeg" || stampFile.type === "image/svg+xml") {
+          if (!cancelled) setStampAssetPreview(URL.createObjectURL(stampFile));
           return;
         }
 
-        if (overlayFile.type === "application/pdf" || overlayFile.name.toLowerCase().endsWith(".pdf")) {
+        if (stampFile.type === "application/pdf" || stampFile.name.toLowerCase().endsWith(".pdf")) {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
           pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
             "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
             import.meta.url
           ).toString();
-          const pdf = await pdfjsLib.getDocument({ data: await overlayFile.arrayBuffer() }).promise;
+          const pdf = await pdfjsLib.getDocument({ data: await stampFile.arrayBuffer() }).promise;
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.5 });
           const canvas = document.createElement("canvas");
@@ -818,16 +819,16 @@ export default function Home() {
       let image = null;
 
       if (overlayFile) {
-        const fileName = overlayFile.name.toLowerCase();
+        const fileName = stampFile.name.toLowerCase();
 
-        if (overlayFile.type === "image/png") {
-          image = await pdf.embedPng(await overlayFile.arrayBuffer());
-        } else if (overlayFile.type === "image/jpeg" || overlayFile.type === "image/jpg") {
-          image = await pdf.embedJpg(await overlayFile.arrayBuffer());
+        if (stampFile.type === "image/png") {
+          image = await pdf.embedPng(await stampFile.arrayBuffer());
+        } else if (stampFile.type === "image/jpeg" || overlayFile.type === "image/jpg") {
+          image = await pdf.embedJpg(await stampFile.arrayBuffer());
         } else if (
-          overlayFile.type === "image/svg+xml" ||
+          stampFile.type === "image/svg+xml" ||
           fileName.endsWith(".svg") ||
-          overlayFile.type === "application/pdf" ||
+          stampFile.type === "application/pdf" ||
           fileName.endsWith(".pdf")
         ) {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -836,8 +837,8 @@ export default function Home() {
             import.meta.url
           ).toString();
 
-          const assetPdf = overlayFile.type === "application/pdf" || fileName.endsWith(".pdf")
-            ? await pdfjsLib.getDocument({ data: await overlayFile.arrayBuffer() }).promise
+          const assetPdf = stampFile.type === "application/pdf" || fileName.endsWith(".pdf")
+            ? await pdfjsLib.getDocument({ data: await stampFile.arrayBuffer() }).promise
             : null;
 
           const canvas = document.createElement("canvas");
@@ -852,7 +853,7 @@ export default function Home() {
             await page.render({ canvas, canvasContext: context, viewport }).promise;
             await assetPdf.destroy();
           } else {
-            const url = URL.createObjectURL(overlayFile);
+            const url = URL.createObjectURL(stampFile);
             const imageElement = new Image();
             await new Promise<void>((resolve, reject) => {
               imageElement.onload = () => resolve();

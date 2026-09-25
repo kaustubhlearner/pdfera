@@ -3,7 +3,7 @@
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { PDFDocument, degrees, rgb } from "pdf-lib";
 
-type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp";
+type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp" | "edit";
 
 const MAX_MERGE_FILES = 100;
 const MAX_PDF_SIZE = 50 * 1024 * 1024;
@@ -22,6 +22,7 @@ const tools = [
   { id: "reorder" as Tool, icon: "reorder", title: "Reorder Pages", text: "Change page order using page numbers." },
   { id: "compress" as Tool, icon: "compress", title: "Compress PDF", text: "Optimize the PDF structure in your browser." },
   { id: "stamp" as Tool, icon: "stamp", title: "Stamp & Sign", text: "Add a stamp or signature to every page." },
+  { id: "edit" as Tool, icon: "edit", title: "PDF Editor", text: "Preview, select, rotate, delete and reorder pages visually." },
 ];
 
 function ToolIcon({ type }: { type: string }) {
@@ -29,6 +30,7 @@ function ToolIcon({ type }: { type: string }) {
   if (type === "merge") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 7h6l3 3h5"/><path d="M5 17h6l3-3h5"/><path d="M16 6l3 4-3 4"/><path d="M8 13l-3 4 3 4"/></svg>;
   if (type === "split") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M8 5l8 14"/><path d="M16 5L8 19"/><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/></svg>;
   if (type === "image") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 2-2 6 5"/></svg>;
+  if (type === "edit") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.5 6.5 3 3"/></svg>;
   if (type === "file-image") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h5"/><circle cx="9" cy="12" r="1.4"/><path d="m7 18 3-3 2 2 2-2 2 3"/></svg>;
   if (type === "rotate") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>;
   if (type === "trash") return <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>;
@@ -49,6 +51,14 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [mergeReview, setMergeReview] = useState(false);
+  const [editorReview, setEditorReview] = useState(false);
+  const [editorOrder, setEditorOrder] = useState<number[]>([]);
+  const [editorSelected, setEditorSelected] = useState<number[]>([]);
+  const [editorRotations, setEditorRotations] = useState<Record<number, number>>({});
+  const [editorThumbnails, setEditorThumbnails] = useState<Record<number, string>>({});
+  const [editorLoading, setEditorLoading] = useState<Record<number, boolean>>({});
+  const [editorErrors, setEditorErrors] = useState<Record<number, boolean>>({});
+  const [editorDragIndex, setEditorDragIndex] = useState<number | null>(null);
   const [pdfThumbnails, setPdfThumbnails] = useState<Record<string, string>>({});
   const [thumbnailLoading, setThumbnailLoading] = useState<Record<string, boolean>>({});
   const [thumbnailErrors, setThumbnailErrors] = useState<Record<string, boolean>>({});
@@ -140,6 +150,76 @@ export default function Home() {
       cancelled = true;
     };
   }, [files, tool, mergeReview]);
+
+  useEffect(() => {
+    if (tool !== "edit" || !editorReview || files.length !== 1) {
+      setEditorThumbnails({});
+      setEditorLoading({});
+      setEditorErrors({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function renderEditorPages() {
+      try {
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+          import.meta.url
+        ).toString();
+
+        const pdf = await pdfjsLib.getDocument({ data: await files[0].arrayBuffer() }).promise;
+        const count = Math.min(pdf.numPages, MAX_PDF_PAGES);
+
+        if (!cancelled) {
+          setEditorOrder(Array.from({ length: count }, (_, index) => index + 1));
+          setEditorSelected([]);
+        }
+
+        for (let pageNumber = 1; pageNumber <= count; pageNumber++) {
+          if (cancelled) break;
+          setEditorLoading((current) => ({ ...current, [pageNumber]: true }));
+
+          try {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 0.42 });
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Canvas unavailable");
+
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+
+            await page.render({ canvas, canvasContext: context, viewport }).promise;
+
+            if (!cancelled) {
+              setEditorThumbnails((current) => ({
+                ...current,
+                [pageNumber]: canvas.toDataURL("image/jpeg", 0.82),
+              }));
+            }
+            page.cleanup();
+          } catch {
+            if (!cancelled) setEditorErrors((current) => ({ ...current, [pageNumber]: true }));
+          } finally {
+            if (!cancelled) setEditorLoading((current) => ({ ...current, [pageNumber]: false }));
+          }
+        }
+
+        await pdf.destroy();
+      } catch {
+        if (!cancelled) setMessage("Could not open this PDF in the visual editor.");
+      }
+    }
+
+    void renderEditorPages();
+    return () => {
+      cancelled = true;
+    };
+  }, [files, tool, editorReview]);
+
+
 
   async function addFiles(list: FileList | File[]) {
     const selected = Array.from(list);
@@ -758,6 +838,14 @@ export default function Home() {
     setPageRange("1");
     setPageOrder("");
     setMergeReview(false);
+    setEditorReview(false);
+    setEditorOrder([]);
+    setEditorSelected([]);
+    setEditorRotations({});
+    setEditorThumbnails({});
+    setEditorLoading({});
+    setEditorErrors({});
+    setEditorDragIndex(null);
     setOverlayFile(null);
     setOverlayType("stamp");
     setOverlayPosition("bottom-right");
@@ -768,6 +856,103 @@ export default function Home() {
     setOverlayPageRange("1");
     setStampText("");
     setStampColor("#ccff00");
+  }
+
+  function openEditorReview() {
+    if (files.length !== 1) {
+      setMessage("Select exactly 1 PDF for the PDF Editor.");
+      return;
+    }
+
+    setMessage("");
+    setEditorReview(true);
+  }
+
+  function toggleEditorPage(pageNumber: number) {
+    setEditorSelected((current) =>
+      current.includes(pageNumber)
+        ? current.filter((page) => page !== pageNumber)
+        : [...current, pageNumber]
+    );
+  }
+
+  function rotateEditorPages() {
+    if (editorSelected.length === 0) {
+      setMessage("Select at least one page to rotate.");
+      return;
+    }
+
+    setEditorRotations((current) => {
+      const next = { ...current };
+      for (const page of editorSelected) {
+        next[page] = ((next[page] || 0) + 90) % 360;
+      }
+      return next;
+    });
+  }
+
+  function deleteEditorPages() {
+    if (editorSelected.length === 0) {
+      setMessage("Select at least one page to delete.");
+      return;
+    }
+
+    if (editorSelected.length >= editorOrder.length) {
+      setMessage("Keep at least one page in the PDF.");
+      return;
+    }
+
+    setEditorOrder((current) => current.filter((page) => !editorSelected.includes(page)));
+    setEditorSelected([]);
+    setMessage("");
+  }
+
+  function moveEditorPage(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || toIndex < 0 || toIndex >= editorOrder.length) return;
+
+    setEditorOrder((current) => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }
+
+  async function exportEditedPdf() {
+    if (files.length !== 1 || editorOrder.length === 0) {
+      setMessage("Open a PDF in the editor first.");
+      return;
+    }
+
+    setBusy(true);
+    setProgress(0);
+    setProgressLabel("Building edited PDF...");
+
+    try {
+      const source = await PDFDocument.load(await files[0].arrayBuffer());
+      const output = await PDFDocument.create();
+      const copied = await output.copyPages(source, editorOrder.map((page) => page - 1));
+
+      for (let index = 0; index < copied.length; index++) {
+        const originalPage = editorOrder[index];
+        const page = copied[index];
+        const rotation = editorRotations[originalPage] || 0;
+        page.setRotation(degrees((page.getRotation().angle + rotation) % 360));
+        output.addPage(page);
+        setProgress(Math.round(((index + 1) / copied.length) * 90));
+      }
+
+      setProgressLabel("Creating final PDF...");
+      const bytes = await output.save({ useObjectStreams: true });
+      setProgress(100);
+      download(bytes, "pdfera-edited.pdf");
+      setMessage("Edited PDF downloaded successfully.");
+    } catch {
+      setMessage("Could not create the edited PDF.");
+    } finally {
+      setBusy(false);
+      setProgressLabel("");
+    }
   }
 
   function openMergeReview() {
@@ -788,6 +973,119 @@ export default function Home() {
   const needsPdf = tool !== "jpg";
   const accept = needsPdf ? "application/pdf" : "image/jpeg,image/png";
   const multiple = tool === "merge" || tool === "jpg";
+
+  if (tool === "edit" && editorReview) {
+    return (
+      <main className="min-h-screen">
+        <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+          <div className="text-2xl font-black tracking-tight">PDF<span className="text-[#ccff00]">era</span></div>
+          <span className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/50">PDF Editor</span>
+        </nav>
+
+        <section className="mx-auto max-w-7xl px-6 pb-24 pt-8">
+          <button onClick={() => setEditorReview(false)} className="mb-6 cursor-pointer text-sm text-white/45 transition hover:text-white">
+            ← Back to upload
+          </button>
+
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="mb-2 text-sm font-bold uppercase tracking-[0.2em] text-[#ccff00]">Visual PDF Editor</p>
+              <h1 className="text-4xl font-black tracking-tight sm:text-5xl">Edit your PDF visually</h1>
+              <p className="mt-3 text-white/45">Select pages, drag to reorder, rotate pages, or remove pages before exporting.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">
+              <span className="font-bold">{editorOrder.length}</span>
+              <span className="ml-1 text-white/40">pages</span>
+            </div>
+          </div>
+
+          <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+            <button type="button" onClick={() => setEditorSelected(editorOrder)} className="cursor-pointer rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/5">Select all</button>
+            <button type="button" onClick={() => setEditorSelected([])} className="cursor-pointer rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/5">Clear selection</button>
+            <button type="button" onClick={rotateEditorPages} disabled={editorSelected.length === 0} className="cursor-pointer rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-35 hover:bg-white/5">↻ Rotate selected</button>
+            <button type="button" onClick={deleteEditorPages} disabled={editorSelected.length === 0} className="cursor-pointer rounded-xl border border-red-400/20 px-4 py-2 text-sm font-semibold text-red-300 disabled:cursor-not-allowed disabled:opacity-35 hover:bg-red-400/10">Delete selected</button>
+            <span className="ml-auto text-xs text-white/35">{editorSelected.length} selected</span>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            {editorOrder.map((pageNumber, index) => (
+              <div
+                key={pageNumber}
+                draggable
+                onDragStart={() => setEditorDragIndex(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (editorDragIndex !== null) moveEditorPage(editorDragIndex, index);
+                  setEditorDragIndex(null);
+                }}
+                onDragEnd={() => setEditorDragIndex(null)}
+                className={`group relative rounded-3xl border p-3 transition cursor-grab active:cursor-grabbing ${
+                  editorSelected.includes(pageNumber)
+                    ? "border-[#ccff00]/70 bg-[#ccff00]/8 shadow-[0_0_0_2px_rgba(204,255,0,0.08)]"
+                    : "border-white/10 bg-white/[0.025] hover:border-white/20"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleEditorPage(pageNumber)}
+                  className="relative block w-full cursor-pointer overflow-hidden rounded-2xl bg-[#171c22] p-2"
+                >
+                  {editorThumbnails[pageNumber] ? (
+                    <img
+                      src={editorThumbnails[pageNumber]}
+                      alt={`Page ${pageNumber} preview`}
+                      className="mx-auto h-64 w-full object-contain transition"
+                      style={{ transform: `rotate(${editorRotations[pageNumber] || 0}deg)` }}
+                    />
+                  ) : editorLoading[pageNumber] ? (
+                    <div className="flex h-64 items-center justify-center">
+                      <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-[#ccff00]" />
+                    </div>
+                  ) : editorErrors[pageNumber] ? (
+                    <div className="flex h-64 items-center justify-center text-center text-xs text-white/35">Preview unavailable</div>
+                  ) : (
+                    <div className="h-64" />
+                  )}
+
+                  <span className="absolute left-3 top-3 rounded-lg bg-[#ccff00] px-2.5 py-1.5 text-xs font-black text-black">{index + 1}</span>
+                  <span className="absolute bottom-3 left-3 rounded-full bg-black/75 px-2 py-1 text-[10px] font-semibold text-white/70">Page {pageNumber}</span>
+                  {editorSelected.includes(pageNumber) && (
+                    <span className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-[#ccff00] text-sm font-black text-black">✓</span>
+                  )}
+                </button>
+
+                <div className="flex items-center justify-between gap-2 px-1 pt-3">
+                  <span className="truncate text-xs font-semibold text-white/65">Page {pageNumber}</span>
+                  <span className="text-[10px] text-white/30">Drag</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {busy && (
+            <div className="mt-7 rounded-2xl border border-white/10 bg-black/30 p-4">
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <span className="text-white/55">{progressLabel}</span>
+                <span className="font-bold text-[#ccff00]">{progress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-[#ccff00] transition-all" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+
+          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => setEditorReview(false)} className="cursor-pointer rounded-2xl border border-white/10 px-6 py-4 font-semibold hover:bg-white/5">Back</button>
+            <button type="button" onClick={exportEditedPdf} disabled={busy || editorOrder.length === 0} className="cursor-pointer rounded-2xl bg-[#ccff00] px-7 py-4 font-black text-black disabled:cursor-not-allowed disabled:opacity-50">
+              {busy ? "Creating PDF..." : `Export edited PDF • ${editorOrder.length} pages →`}
+            </button>
+          </div>
+
+          {message && <p className="mt-4 text-center text-sm text-[#ccff00]">{message}</p>}
+        </section>
+      </main>
+    );
+  }
 
   if (tool === "merge" && mergeReview) {
     return (
@@ -980,7 +1278,8 @@ export default function Home() {
                  tool === "rotate" ? "Rotate your PDF" :
                  tool === "delete" ? "Delete PDF pages" :
                  tool === "reorder" ? "Reorder PDF pages" :
-                 tool === "stamp" ? "Stamp or sign every page" : "Optimize your PDF"}
+                 tool === "stamp" ? "Stamp or sign every page" :
+                 tool === "edit" ? "Edit your PDF visually" : "Optimize your PDF"}
               </h2>
               <p className="mt-1 text-sm text-white/40">
                 {tool === "merge" ? `Add 2 to ${MAX_MERGE_FILES} PDF files.` :
@@ -991,6 +1290,7 @@ export default function Home() {
                  tool === "delete" ? "Choose pages to remove." :
                  tool === "reorder" ? "Enter the complete new page order." :
                  tool === "stamp" ? "Upload a stamp or signature image and apply it to every page." :
+                 tool === "edit" ? "Preview every page, select pages, rotate, delete and drag to reorder." :
                  "Re-save the PDF with object streams enabled."}
               </p>
             </div>
@@ -1236,7 +1536,7 @@ export default function Home() {
           )}
 
           <button
-            onClick={tool === "merge" ? openMergeReview : process}
+            onClick={tool === "merge" ? openMergeReview : tool === "edit" ? openEditorReview : process}
             disabled={busy}
             className="mt-6 w-full rounded-2xl bg-[#ccff00] px-6 py-4 font-black text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1248,7 +1548,8 @@ export default function Home() {
              tool === "rotate" ? "Rotate PDF →" :
              tool === "delete" ? "Delete Pages →" :
              tool === "reorder" ? "Reorder PDF →" :
-             tool === "stamp" ? `Add ${overlayType === "stamp" ? "Stamp" : "Signature"} →` : "Optimize PDF →"}
+             tool === "stamp" ? `Add ${overlayType === "stamp" ? "Stamp" : "Signature"} →` :
+             tool === "edit" ? "Open PDF Editor →" : "Optimize PDF →"}
           </button>
 
           {message && <p className="mt-4 text-center text-sm text-[#ccff00]">{message}</p>}

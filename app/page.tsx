@@ -128,7 +128,7 @@ export default function Home() {
     );
   }
 
-  function handleDrop(event: DragEvent<HTMLButtonElement>) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
     void addFiles(event.dataTransfer.files);

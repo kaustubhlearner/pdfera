@@ -816,22 +816,52 @@ export default function Home() {
             }}
           />
 
-          <button
-            onClick={() => inputRef.current?.click()}
+          <div
             onDragOver={(event) => {
               event.preventDefault();
               setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
-            className={`flex min-h-52 w-full flex-col items-center justify-center rounded-3xl border border-dashed px-6 text-center transition ${
-              dragging ? "border-[#ccff00] bg-[#ccff00]/10" : "border-white/15 bg-black/30 hover:border-[#ccff00]/50"
+            className={`relative overflow-hidden rounded-3xl border border-dashed px-6 py-9 text-center transition ${
+              dragging
+                ? "border-[#ccff00] bg-[#ccff00]/10 shadow-[0_0_0_4px_rgba(204,255,0,0.06)]"
+                : "border-white/15 bg-black/30 hover:border-white/25"
             }`}
           >
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ccff00] text-2xl text-black">↑</div>
-            <strong>Click or drag & drop {tool === "jpg" ? "images" : "PDFs"}</strong>
-            <span className="mt-2 text-sm text-white/35">Files are processed locally in your browser.</span>
-          </button>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-[#ccff00]/20 bg-[#ccff00]/10 text-[#ccff00]">
+              <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 16V4" />
+                <path d="m7 9 5-5 5 5" />
+                <path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+              </svg>
+            </div>
+            <h3 className="mt-5 text-lg font-bold">{dragging ? "Drop your files here" : "Upload your files"}</h3>
+            <p className="mt-2 text-sm text-white/45">Drag & drop here, or choose files from your device</p>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="mt-6 rounded-xl bg-[#ccff00] px-6 py-3 text-sm font-black text-black transition hover:brightness-95"
+            >
+              Choose {tool === "jpg" ? "Images" : "PDF Files"}
+            </button>
+            <div className="mx-auto mt-5 max-w-xl border-t border-white/10 pt-4 text-xs text-white/35">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                <span>{tool === "jpg" ? "JPG / PNG" : "PDF only"}</span>
+                <span>•</span>
+                <span>Max {tool === "jpg" ? "15 MB per image" : "50 MB per PDF"}</span>
+                <span>•</span>
+                <span>Processed locally in your browser</span>
+              </div>
+              {tool === "merge" && <p className="mt-2">You can add up to {MAX_MERGE_FILES} PDF files.</p>}
+            </div>
+            {files.length > 0 && (
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs text-white/55">
+                <span className="h-2 w-2 rounded-full bg-[#ccff00]" />
+                {files.length} file{files.length === 1 ? "" : "s"} selected
+              </div>
+            )}
+          </div>
 
           {(tool === "split" || tool === "delete") && files.length === 1 && (
             <div className="mt-5">

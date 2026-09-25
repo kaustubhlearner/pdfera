@@ -1759,11 +1759,6 @@ export default function Home() {
                   })}
                 </div>
               </div>
-                {overlayPages === "selected" && (
-                  <input value={overlayPageRange} onChange={(event) => setOverlayPageRange(event.target.value)} placeholder="Example: 1,3,5 or 2-6" className="mt-3 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none focus:border-[#ccff00]/60" />
-                )}
-              </div>
-
               <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-white/70">Position</label>

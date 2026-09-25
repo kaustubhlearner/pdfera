@@ -89,10 +89,12 @@ export default function Home() {
         try {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-          // PDF.js 5.x requires a worker for reliable browser rendering.
-          // Use the exact installed version from a public CDN.
-          pdfjsLib.GlobalWorkerOptions.workerSrc =
-            "https://unpkg.com/pdfjs-dist@5.4.54/build/pdf.worker.min.mjs";
+          // Bundle the PDF.js worker with Next.js instead of relying on a
+          // third-party CDN. This avoids CORS/CDN failures on deployed sites.
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+            import.meta.url
+          ).toString();
 
           const pdf = await pdfjsLib.getDocument({
             data: await file.arrayBuffer(),

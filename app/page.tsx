@@ -6,7 +6,7 @@ import { PDFDocument, degrees, rgb } from "pdf-lib";
 type Tool = "merge" | "split" | "jpg" | "images" | "rotate" | "delete" | "reorder" | "compress" | "stamp" | "edit";
 
 const MAX_MERGE_FILES = 100;
-const MAX_PDF_SIZE = 50 * 1024 * 1024;
+const MAX_PDF_SIZE = 100 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
 const MAX_TOTAL_SIZE = 250 * 1024 * 1024;
 const MAX_PDF_PAGES = 300;

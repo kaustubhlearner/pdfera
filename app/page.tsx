@@ -68,6 +68,9 @@ export default function Home() {
   const [overlaySize, setOverlaySize] = useState("medium");
   const [overlayOpacity, setOverlayOpacity] = useState(100);
   const [overlayRotation, setOverlayRotation] = useState(0);
+  const [overlayX, setOverlayX] = useState(85);
+  const [overlayY, setOverlayY] = useState(85);
+  const [overlayDragging, setOverlayDragging] = useState(false);
   const [overlayPages, setOverlayPages] = useState("all");
   const [overlayPageRange, setOverlayPageRange] = useState("1");
   const [stampText, setStampText] = useState("");
@@ -1776,6 +1779,67 @@ export default function Home() {
                   </select>
                 </div>
               </div>
+
+              {overlayFile && stampSelectedPages.length > 0 && stampThumbnails[stampSelectedPages[0]] && (
+                <div className="rounded-2xl border border-[#ccff00]/20 bg-[#ccff00]/5 p-4">
+                  <div className="mb-3">
+                    <p className="text-sm font-bold text-[#ccff00]">Drag to place your {overlayType}</p>
+                    <p className="mt-1 text-xs text-white/45">Click and drag the signature/stamp up, down, left or right on the page.</p>
+                  </div>
+                  <div
+                    className="relative mx-auto w-full max-w-md overflow-hidden rounded-xl border border-white/10 bg-[#171c22] select-none"
+                    onPointerMove={(event) => {
+                      if (!overlayDragging) return;
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const nextX = Math.max(5, Math.min(95, ((event.clientX - rect.left) / rect.width) * 100));
+                      const nextY = Math.max(5, Math.min(95, ((event.clientY - rect.top) / rect.height) * 100));
+                      setOverlayX(nextX);
+                      setOverlayY(nextY);
+                      setOverlayPosition(
+                        nextY < 33 ? (nextX < 33 ? "top-left" : nextX > 67 ? "top-right" : "top-center") :
+                        nextY > 67 ? (nextX < 33 ? "bottom-left" : nextX > 67 ? "bottom-right" : "bottom-center") :
+                        (nextX < 33 ? "middle-left" : nextX > 67 ? "middle-right" : "center")
+                      );
+                    }}
+                  >
+                    <img src={stampThumbnails[stampSelectedPages[0]]} alt="PDF page preview" className="block h-auto w-full" />
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        setOverlayDragging(true);
+                      }}
+                      onPointerUp={(event) => {
+                        setOverlayDragging(false);
+                        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                          event.currentTarget.releasePointerCapture(event.pointerId);
+                        }
+                      }}
+                      onPointerCancel={() => setOverlayDragging(false)}
+                      className={`absolute z-10 cursor-grab touch-none rounded-lg border-2 border-[#ccff00] bg-white/10 p-1 shadow-[0_0_0_3px_rgba(204,255,0,0.15)] ${overlayDragging ? "cursor-grabbing scale-[1.02]" : ""}`}
+                      style={{
+                        left: `${overlayX}%`,
+                        top: `${overlayY}%`,
+                        transform: "translate(-50%, -50%)",
+                        width: overlaySize === "small" ? "18%" : overlaySize === "large" ? "34%" : "26%",
+                        opacity: overlayOpacity / 100,
+                      }}
+                    >
+                      {stampAssetPreview ? (
+                        <img src={stampAssetPreview} alt={`${overlayType} draggable preview`} className="block h-auto w-full object-contain" draggable={false} />
+                      ) : (
+                        <div className="px-2 py-3 text-center text-xs font-black text-[#ccff00]">
+                          {stampText.trim() || overlayType.toUpperCase()}
+                        </div>
+                      )}
+                      <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#ccff00] text-[10px] font-black text-black">↕</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-center text-[11px] text-white/35">Position: {Math.round(overlayX)}% horizontal • {Math.round(overlayY)}% vertical</p>
+                </div>
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
                 <div>

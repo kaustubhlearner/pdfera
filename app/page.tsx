@@ -1788,19 +1788,6 @@ export default function Home() {
                   </div>
                   <div
                     className="relative mx-auto w-full max-w-md overflow-hidden rounded-xl border border-white/10 bg-[#171c22] select-none"
-                    onPointerMove={(event) => {
-                      if (!overlayDragging) return;
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      const nextX = Math.max(5, Math.min(95, ((event.clientX - rect.left) / rect.width) * 100));
-                      const nextY = Math.max(5, Math.min(95, ((event.clientY - rect.top) / rect.height) * 100));
-                      setOverlayX(nextX);
-                      setOverlayY(nextY);
-                      setOverlayPosition(
-                        nextY < 33 ? (nextX < 33 ? "top-left" : nextX > 67 ? "top-right" : "top-center") :
-                        nextY > 67 ? (nextX < 33 ? "bottom-left" : nextX > 67 ? "bottom-right" : "bottom-center") :
-                        (nextX < 33 ? "middle-left" : nextX > 67 ? "middle-right" : "center")
-                      );
-                    }}
                   >
                     <img src={stampThumbnails[stampSelectedPages[0]]} alt="PDF page preview" className="block h-auto w-full" />
                     <div
@@ -1810,6 +1797,20 @@ export default function Home() {
                         event.preventDefault();
                         event.currentTarget.setPointerCapture(event.pointerId);
                         setOverlayDragging(true);
+                      }}
+                      onPointerMove={(event) => {
+                        if (!overlayDragging) return;
+                        const container = event.currentTarget.parentElement;
+                        if (!container) return;
+                        const rect = container.getBoundingClientRect();
+                        const nextX = Math.max(5, Math.min(95, ((event.clientX - rect.left) / rect.width) * 100));
+                        const nextY = Math.max(5, Math.min(95, ((event.clientY - rect.top) / rect.height) * 100));
+                        setOverlayX(nextX);
+                        setOverlayY(nextY);
+                        setOverlayPosition(
+                          nextY < 33 ? (nextX < 33 ? "top-left" : nextX > 67 ? "top-right" : "top-center") :
+                          nextY > 67 ? (nextX < 33 ? "bottom-left" : nextX > 67 ? "bottom-right" : "center")
+                        );
                       }}
                       onPointerUp={(event) => {
                         setOverlayDragging(false);

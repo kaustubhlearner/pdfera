@@ -1809,7 +1809,8 @@ export default function Home() {
                         setOverlayY(nextY);
                         setOverlayPosition(
                           nextY < 33 ? (nextX < 33 ? "top-left" : nextX > 67 ? "top-right" : "top-center") :
-                          nextY > 67 ? (nextX < 33 ? "bottom-left" : nextX > 67 ? "bottom-right" : "center")
+                          nextY > 67 ? (nextX < 33 ? "bottom-left" : nextX > 67 ? "bottom-right" : "bottom-center") :
+                          (nextX < 33 ? "middle-left" : nextX > 67 ? "middle-right" : "center")
                         );
                       }}
                       onPointerUp={(event) => {

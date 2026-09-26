@@ -293,7 +293,7 @@ export default function Home() {
       setStampAssetPreview("");
       return;
     }
-    const currentOverlayFile = currentOverlayFile;
+    const currentOverlayFile = overlayFile;
 
     let cancelled = false;
     async function previewStampAsset() {

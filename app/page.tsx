@@ -289,11 +289,11 @@ export default function Home() {
   }, [files, tool]);
 
   useEffect(() => {
-    const currentOverlayFile = overlayFile;
-    if (!currentOverlayFile) {
+    if (!overlayFile) {
       setStampAssetPreview("");
       return;
     }
+    const currentOverlayFile = currentOverlayFile;
 
     let cancelled = false;
     async function previewStampAsset() {
@@ -819,16 +819,16 @@ export default function Home() {
       let image = null;
 
       if (overlayFile) {
-        const fileName = currentOverlayFile.name.toLowerCase();
+        const fileName = overlayFile.name.toLowerCase();
 
-        if (currentOverlayFile.type === "image/png") {
-          image = await pdf.embedPng(await currentOverlayFile.arrayBuffer());
-        } else if (currentOverlayFile.type === "image/jpeg" || currentOverlayFile.type === "image/jpg") {
-          image = await pdf.embedJpg(await currentOverlayFile.arrayBuffer());
+        if (overlayFile.type === "image/png") {
+          image = await pdf.embedPng(await overlayFile.arrayBuffer());
+        } else if (overlayFile.type === "image/jpeg" || overlayFile.type === "image/jpg") {
+          image = await pdf.embedJpg(await overlayFile.arrayBuffer());
         } else if (
-          currentOverlayFile.type === "image/svg+xml" ||
+          overlayFile.type === "image/svg+xml" ||
           fileName.endsWith(".svg") ||
-          currentOverlayFile.type === "application/pdf" ||
+          overlayFile.type === "application/pdf" ||
           fileName.endsWith(".pdf")
         ) {
           const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -837,8 +837,8 @@ export default function Home() {
             import.meta.url
           ).toString();
 
-          const assetPdf = currentOverlayFile.type === "application/pdf" || fileName.endsWith(".pdf")
-            ? await pdfjsLib.getDocument({ data: await currentOverlayFile.arrayBuffer() }).promise
+          const assetPdf = overlayFile.type === "application/pdf" || fileName.endsWith(".pdf")
+            ? await pdfjsLib.getDocument({ data: await overlayFile.arrayBuffer() }).promise
             : null;
 
           const canvas = document.createElement("canvas");
@@ -853,7 +853,7 @@ export default function Home() {
             await page.render({ canvas, canvasContext: context, viewport }).promise;
             await assetPdf.destroy();
           } else {
-            const url = URL.createObjectURL(currentOverlayFile);
+            const url = URL.createObjectURL(overlayFile);
             const imageElement = new Image();
             await new Promise<void>((resolve, reject) => {
               imageElement.onload = () => resolve();
